@@ -11,7 +11,7 @@ struct AIQuotaApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuPanel(isPinnedWindow: false)
+            MenuPanel()
                 .environmentObject(store)
         } label: {
             Image(nsImage: MenuBarIconRenderer.image(
@@ -20,26 +20,11 @@ struct AIQuotaApp: App {
             ))
         }
         .menuBarExtraStyle(.window)
-
-        // Detached floating panel that stays open while following tutorials.
-        Window("AIQuota", id: Self.pinnedWindowID) {
-            MenuPanel(isPinnedWindow: true)
-                .environmentObject(store)
-                .background(PinnedWindowConfigurator())
-        }
-        .windowResizability(.contentSize)
-        .defaultSize(width: 360, height: 420)
-        .commandsRemoved()
     }
-
-    static let pinnedWindowID = "aiquota-pinned-panel"
 }
 
 private struct MenuPanel: View {
     @EnvironmentObject private var store: QuotaStore
-    @Environment(\.openWindow) private var openWindow
-
-    var isPinnedWindow: Bool
 
     @State private var showKimiPaste = false
     @State private var kimiTokenDraft = ""
@@ -190,7 +175,6 @@ private struct MenuPanel: View {
         .onAppear { store.start() }
     }
 
-    @ViewBuilder
     private var pinButton: some View {
         Button {
             togglePin()
@@ -213,22 +197,14 @@ private struct MenuPanel: View {
     private func togglePin() {
         if store.isPinned {
             store.isPinned = false
-            closePinnedWindow()
+            PinnedPanelController.shared.hide()
         } else {
-            store.isPinned = true
-            // Prefer Kimi when pinning to follow auth tutorial.
             if store.selected != .kimi {
                 store.selected = .kimi
             }
             showKimiPaste = true
-            openWindow(id: AIQuotaApp.pinnedWindowID)
-            NSApp.activate(ignoringOtherApps: true)
-        }
-    }
-
-    private func closePinnedWindow() {
-        for window in NSApp.windows where window.title == "AIQuota" || window.identifier?.rawValue.contains(AIQuotaApp.pinnedWindowID) == true {
-            window.close()
+            store.isPinned = true
+            PinnedPanelController.shared.show(store: store)
         }
     }
 
@@ -240,41 +216,74 @@ private struct MenuPanel: View {
         } else {
             kimiAuthHint = "自动导入失败。请先: pip3 install --user browser-cookie3；浏览器登录 kimi.com；或改用粘贴 kimi-auth"
             if !store.isPinned {
-                store.isPinned = true
                 showKimiPaste = true
-                openWindow(id: AIQuotaApp.pinnedWindowID)
+                store.isPinned = true
+                PinnedPanelController.shared.show(store: store)
             }
             NSWorkspace.shared.open(QuotaProviderID.kimi.dashboardURL)
         }
     }
 }
 
-/// Makes the detached SwiftUI Window float above other apps and stay visible.
-private struct PinnedWindowConfigurator: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            Self.configure(from: view)
+/// Dedicated floating NSPanel — safer than SwiftUI Window + collectionBehavior for menu-bar apps.
+@MainActor
+final class PinnedPanelController: NSObject, NSWindowDelegate {
+    static let shared = PinnedPanelController()
+
+    private var panel: NSPanel?
+    private weak var store: QuotaStore?
+
+    func show(store: QuotaStore) {
+        self.store = store
+        let panel = ensurePanel(store: store)
+        // Refresh hosting root so state stays in sync.
+        panel.contentView = NSHostingView(
+            rootView: MenuPanel()
+                .environmentObject(store)
+        )
+        if panel.frame.origin == .zero {
+            panel.center()
         }
-        return view
+        panel.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            Self.configure(from: nsView)
-        }
+    func hide() {
+        panel?.orderOut(nil)
+        store?.isPinned = false
     }
 
-    private static func configure(from view: NSView) {
-        guard let window = view.window else { return }
-        window.title = "AIQuota"
-        window.level = .floating
-        window.collectionBehavior.insert([.canJoinAllSpaces, .fullScreenAuxiliary, .moveToActiveSpace])
-        window.hidesOnDeactivate = false
-        window.isMovableByWindowBackground = true
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
-        window.makeKeyAndOrderFront(nil)
+    private func ensurePanel(store: QuotaStore) -> NSPanel {
+        if let panel {
+            return panel
+        }
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 520),
+            styleMask: [.titled, .closable, .utilityWindow, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "AIQuota"
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.isMovableByWindowBackground = true
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.delegate = self
+        panel.contentView = NSHostingView(
+            rootView: MenuPanel()
+                .environmentObject(store)
+        )
+        self.panel = panel
+        return panel
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        store?.isPinned = false
     }
 }
 

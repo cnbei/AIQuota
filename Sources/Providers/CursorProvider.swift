@@ -1,0 +1,186 @@
+import Foundation
+
+enum CursorProvider {
+    private static let usageURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage")!
+    private static let restUsageURL = URL(string: "https://cursor.com/api/usage")!
+
+    static func fetch() async -> QuotaSnapshot {
+        do {
+            guard let accessToken = try readAccessToken() else {
+                return .failed(.cursor, message: "未找到 Cursor 登录态，请先在 Cursor 登录")
+            }
+
+            let (data, response) = try await HTTP.post(
+                usageURL,
+                headers: [
+                    "Authorization": "Bearer \(accessToken)",
+                    "Content-Type": "application/json",
+                    "Connect-Protocol-Version": "1"
+                ],
+                body: Data("{}".utf8)
+            )
+
+            if (200..<300).contains(response.statusCode),
+               let json = HTTP.jsonObject(data),
+               let snap = mapDashboard(json) {
+                return snap
+            }
+
+            // Fallback: legacy request-count usage.
+            if let session = session(from: accessToken) {
+                var components = URLComponents(url: restUsageURL, resolvingAgainstBaseURL: false)
+                components?.queryItems = [URLQueryItem(name: "user", value: session.userID)]
+                if let url = components?.url {
+                    let (legacyData, legacyResp) = try await HTTP.get(
+                        url,
+                        headers: ["Cookie": "WorkosCursorSessionToken=\(session.cookieValue)"]
+                    )
+                    if (200..<300).contains(legacyResp.statusCode),
+                       let json = HTTP.jsonObject(legacyData),
+                       let snap = mapLegacy(json) {
+                        return snap
+                    }
+                }
+            }
+
+            return .failed(.cursor, message: "Cursor 用量接口失败 (\(response.statusCode))")
+        } catch {
+            return .failed(.cursor, message: error.localizedDescription)
+        }
+    }
+
+    // MARK: - Local auth
+
+    private static func dbPath() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
+    }
+
+    private static func readAccessToken() throws -> String? {
+        let path = dbPath().path
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        return readTokenViaCLI(path: path)
+    }
+
+    private static func readTokenViaCLI(path: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [path, "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken' LIMIT 1;"]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            let text = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return (text?.isEmpty == false) ? text : nil
+        } catch {
+            return nil
+        }
+    }
+
+    private struct Session {
+        var userID: String
+        var cookieValue: String
+    }
+
+    private static func session(from accessToken: String) -> Session? {
+        guard let payload = jwtPayload(accessToken) else { return nil }
+        let sub = (payload["sub"] as? String) ?? ""
+        let parts = sub.split(separator: "|", omittingEmptySubsequences: false)
+        let userID = String(parts.count > 1 ? parts[1] : parts[0])
+        guard !userID.isEmpty else { return nil }
+        return Session(userID: userID, cookieValue: "\(userID)%3A%3A\(accessToken)")
+    }
+
+    private static func jwtPayload(_ token: String) -> [String: Any]? {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b64 = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64.append("=") }
+        guard let data = Data(base64Encoded: b64) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    // MARK: - Mapping
+
+    private static func mapDashboard(_ json: [String: Any]) -> QuotaSnapshot? {
+        // Connect responses may nest under planUsage / plan_usage.
+        let planUsage = (json["planUsage"] as? [String: Any])
+            ?? (json["plan_usage"] as? [String: Any])
+            ?? json
+
+        let limitCents = JSONPath.double(planUsage["limit"])
+            ?? JSONPath.double(planUsage["includedLimit"])
+        let remainingCents = JSONPath.double(planUsage["remaining"])
+        let usedCents = JSONPath.double(planUsage["used"])
+        let totalPercent = JSONPath.double(planUsage["totalPercentUsed"])
+            ?? JSONPath.double(json["totalPercentUsed"])
+        let apiPercent = JSONPath.double(planUsage["apiPercentUsed"])
+            ?? JSONPath.double(json["apiPercentUsed"])
+
+        var remaining: Double?
+        if let remainingCents, let limitCents, limitCents > 0 {
+            remaining = remainingCents / limitCents * 100
+        } else if let usedCents, let limitCents, limitCents > 0 {
+            remaining = (1 - usedCents / limitCents) * 100
+        } else if let apiPercent {
+            remaining = 100 - apiPercent
+        } else if let totalPercent {
+            remaining = 100 - totalPercent
+        }
+
+        guard let remaining else { return nil }
+
+        let usedDisplay: String
+        if let limitCents, let used = usedCents ?? (remainingCents.map { limitCents - $0 }) {
+            usedDisplay = String(format: "$%.2f / $%.2f", used / 100, limitCents / 100)
+        } else if let totalPercent {
+            usedDisplay = String(format: "%.0f%% used", totalPercent)
+        } else {
+            usedDisplay = String(format: "%.0f%% left", remaining)
+        }
+
+        let plan = JSONPath.string(json["planName"])
+            ?? JSONPath.string(json["membershipType"])
+            ?? JSONPath.string((json["plan"] as? [String: Any])?["name"])
+
+        return QuotaSnapshot(
+            provider: .cursor,
+            remainingPercent: max(0, min(100, remaining)),
+            detail: usedDisplay,
+            planName: plan,
+            updatedAt: Date(),
+            error: nil
+        )
+    }
+
+    private static func mapLegacy(_ json: [String: Any]) -> QuotaSnapshot? {
+        // Shape: { "gpt-4": { numRequests, maxRequestUsage }, startOfMonth }
+        var best: (used: Double, max: Double)?
+        for (_, value) in json {
+            guard let bucket = value as? [String: Any] else { continue }
+            let used = JSONPath.double(bucket["numRequests"])
+            let maxV = JSONPath.double(bucket["maxRequestUsage"])
+            guard let used, let maxV, maxV > 0 else { continue }
+            if best == nil || maxV > best!.max {
+                best = (used, maxV)
+            }
+        }
+        guard let best else { return nil }
+        let remaining = max(0, min(100, (1 - best.used / best.max) * 100))
+        return QuotaSnapshot(
+            provider: .cursor,
+            remainingPercent: remaining,
+            detail: String(format: "%.0f / %.0f requests", best.used, best.max),
+            planName: nil,
+            updatedAt: Date(),
+            error: nil
+        )
+    }
+}

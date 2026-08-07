@@ -109,6 +109,7 @@ final class QuotaStore: ObservableObject {
         case .codex: return await CodexProvider.fetch()
         case .cursor: return await CursorProvider.fetch()
         case .kimi: return await KimiProvider.fetch()
+        case .grok: return await GrokProvider.fetch()
         }
     }
 }

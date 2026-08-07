@@ -11,6 +11,7 @@ macOS 菜单栏小工具：用彩色圆环显示 AI 编码额度**剩余百分�
 | **Codex**（默认） | `~/.codex/auth.json` → ChatGPT 用量接口 | 剩余额度 % |
 | **Cursor** | 本机 Cursor 登录态（`state.vscdb`）→ Dashboard 用量接口 | 剩余 **Cursor Models** %（对齐 [Spending](https://cursor.com/dashboard/spending)） |
 | **Kimi** | 网页 `kimi-auth` Cookie → 会员用量接口 | 剩余 **会员总使用量** % |
+| **Grok** | `~/.grok/auth.json` → Grok Build 额度接口 | 剩余 **Grok Build** 积分 % |
 
 圆环颜色：绿 = 充裕，红 = 快用完；圆心数字为**剩余百分比**。
 
@@ -20,6 +21,7 @@ macOS 菜单栏小工具：用彩色圆环显示 AI 编码额度**剩余百分�
 - Xcode Command Line Tools / Swift 5.9+
 - **Codex / Cursor**：本机已登录即可
 - **Kimi**：需要网页会话 Cookie `kimi-auth`（不是 Code CLI 的 OAuth token）
+- **Grok**：先执行 `grok login`，确保 `~/.grok/auth.json` 有有效 OIDC 登录态
 
 一键导入 Kimi 登录时可选依赖：
 

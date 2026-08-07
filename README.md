@@ -11,6 +11,7 @@ macOS menu bar app that shows remaining AI coding quota as a colored ring.
 | **Codex** (default) | `~/.codex/auth.json` → ChatGPT usage API | Remaining quota % |
 | **Cursor** | Local Cursor login (`state.vscdb`) → Dashboard usage API | Remaining **Cursor Models** % (aligned with [Spending](https://cursor.com/dashboard/spending)) |
 | **Kimi** | Website `kimi-auth` cookie → membership stats | Remaining **membership total usage** % |
+| **Grok** | `~/.grok/auth.json` → Grok Build billing API | Remaining **Grok Build** credits % |
 
 Ring colors: green = plenty left, red = almost used up. The number in the center is **remaining percent**.
 
@@ -20,6 +21,7 @@ Ring colors: green = plenty left, red = almost used up. The number in the center
 - Xcode Command Line Tools / Swift 5.9+
 - **Codex / Cursor**: already signed in on this Mac
 - **Kimi**: website session cookie `kimi-auth` (not the Code CLI OAuth token)
+- **Grok**: run `grok login` so `~/.grok/auth.json` has a valid OIDC session
 
 Optional (for one-click Kimi import):
 

@@ -195,7 +195,7 @@ private struct MenuPanel: View {
             .buttonStyle(.borderless)
         }
         .padding(14)
-        .frame(width: 360)
+        .frame(width: 380)
         .onAppear { store.start() }
         .onChange(of: store.selected) { newValue in
             if newValue != .kimi {

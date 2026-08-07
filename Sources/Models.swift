@@ -5,6 +5,7 @@ enum QuotaProviderID: String, CaseIterable, Identifiable, Codable {
     case codex
     case cursor
     case kimi
+    case grok
 
     var id: String { rawValue }
 
@@ -13,6 +14,7 @@ enum QuotaProviderID: String, CaseIterable, Identifiable, Codable {
         case .codex: return "Codex"
         case .cursor: return "Cursor"
         case .kimi: return "Kimi"
+        case .grok: return "Grok"
         }
     }
 
@@ -24,6 +26,8 @@ enum QuotaProviderID: String, CaseIterable, Identifiable, Codable {
             return URL(string: "https://cursor.com/dashboard/spending")!
         case .kimi:
             return URL(string: "https://www.kimi.com/membership/subscription?tab=quota")!
+        case .grok:
+            return URL(string: "https://grok.com/?_s=usage")!
         }
     }
 }
@@ -190,7 +194,7 @@ struct QuotaSnapshot: Equatable, Sendable {
                 windows: windows,
                 fallback: detail
             )
-        case .codex:
+        case .codex, .grok:
             break
         }
         return snap

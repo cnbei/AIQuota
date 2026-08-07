@@ -110,45 +110,72 @@ enum CursorProvider {
     // MARK: - Mapping
 
     private static func mapDashboard(_ json: [String: Any]) -> QuotaSnapshot? {
-        // Connect responses may nest under planUsage / plan_usage.
+        // Spending dashboard fields live under planUsage:
+        // - autoPercentUsed  → "Cursor Models" bar
+        // - apiPercentUsed   → "Other Models" bar
+        // - totalPercentUsed → blended total (not shown as a main bar)
         let planUsage = (json["planUsage"] as? [String: Any])
             ?? (json["plan_usage"] as? [String: Any])
             ?? json
 
-        let limitCents = JSONPath.double(planUsage["limit"])
-            ?? JSONPath.double(planUsage["includedLimit"])
-        let remainingCents = JSONPath.double(planUsage["remaining"])
-        let usedCents = JSONPath.double(planUsage["used"])
-        let totalPercent = JSONPath.double(planUsage["totalPercentUsed"])
-            ?? JSONPath.double(json["totalPercentUsed"])
+        let autoPercent = JSONPath.double(planUsage["autoPercentUsed"])
+            ?? JSONPath.double(json["autoPercentUsed"])
         let apiPercent = JSONPath.double(planUsage["apiPercentUsed"])
             ?? JSONPath.double(json["apiPercentUsed"])
+        let totalPercent = JSONPath.double(planUsage["totalPercentUsed"])
+            ?? JSONPath.double(json["totalPercentUsed"])
+
+        // Match the Spending page: ring follows Cursor Models (auto), detail shows both pools.
+        // Fallback to the tighter of known pools, then total, then dollar fields.
+        let usedForRing: Double?
+        if let autoPercent {
+            usedForRing = autoPercent
+        } else if let apiPercent, let totalPercent {
+            usedForRing = max(apiPercent, totalPercent)
+        } else {
+            usedForRing = apiPercent ?? totalPercent
+        }
 
         var remaining: Double?
-        if let remainingCents, let limitCents, limitCents > 0 {
-            remaining = remainingCents / limitCents * 100
-        } else if let usedCents, let limitCents, limitCents > 0 {
-            remaining = (1 - usedCents / limitCents) * 100
-        } else if let apiPercent {
-            remaining = 100 - apiPercent
-        } else if let totalPercent {
-            remaining = 100 - totalPercent
+        if let usedForRing {
+            remaining = 100 - usedForRing
+        } else {
+            let limitCents = JSONPath.double(planUsage["limit"])
+                ?? JSONPath.double(planUsage["includedLimit"])
+            let remainingCents = JSONPath.double(planUsage["remaining"])
+            let usedCents = JSONPath.double(planUsage["used"])
+                ?? JSONPath.double(planUsage["includedSpend"])
+            if let remainingCents, let limitCents, limitCents > 0 {
+                remaining = remainingCents / limitCents * 100
+            } else if let usedCents, let limitCents, limitCents > 0 {
+                remaining = (1 - usedCents / limitCents) * 100
+            }
         }
 
         guard let remaining else { return nil }
 
-        let usedDisplay: String
-        if let limitCents, let used = usedCents ?? (remainingCents.map { limitCents - $0 }) {
-            usedDisplay = String(format: "$%.2f / $%.2f", used / 100, limitCents / 100)
-        } else if let totalPercent {
-            usedDisplay = String(format: "%.0f%% used", totalPercent)
-        } else {
-            usedDisplay = String(format: "%.0f%% left", remaining)
+        var parts: [String] = []
+        if let autoPercent {
+            parts.append(String(format: "Cursor Models %.0f%% used", autoPercent))
         }
+        if let apiPercent {
+            parts.append(String(format: "Other %.0f%% used", apiPercent))
+        }
+        if parts.isEmpty, let totalPercent {
+            parts.append(String(format: "Total %.0f%% used", totalPercent))
+        }
+        if let limit = JSONPath.double(planUsage["limit"]),
+           let included = JSONPath.double(planUsage["includedSpend"]) {
+            parts.append(String(format: "$%.2f / $%.2f", included / 100, limit / 100))
+        }
+        let usedDisplay = parts.isEmpty
+            ? String(format: "%.0f%% left", remaining)
+            : parts.joined(separator: " · ")
 
         let plan = JSONPath.string(json["planName"])
             ?? JSONPath.string(json["membershipType"])
             ?? JSONPath.string((json["plan"] as? [String: Any])?["name"])
+            ?? "Pro"
 
         return QuotaSnapshot(
             provider: .cursor,

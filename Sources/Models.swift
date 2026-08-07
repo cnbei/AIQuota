@@ -23,7 +23,7 @@ enum QuotaProviderID: String, CaseIterable, Identifiable, Codable {
         case .cursor:
             return URL(string: "https://cursor.com/dashboard/spending")!
         case .kimi:
-            return URL(string: "https://www.kimi.com/code/console?from=kfc_overview_topbar")!
+            return URL(string: "https://www.kimi.com/membership/subscription?tab=quota")!
         }
     }
 }

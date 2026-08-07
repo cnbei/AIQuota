@@ -6,14 +6,19 @@ macOS 菜单栏小工具：用彩色圆环显示 AI 编码额度剩余百分比�
 
 - **Codex**（默认）— 读 `~/.codex/auth.json`
 - **Cursor** — 读 Cursor 本机登录态
-- **Kimi Coding Plan** — 读 `~/.kimi-code/credentials/kimi-code.json`
+- **Kimi** — 读会员页「总使用量」（`membership/subscription?tab=quota`）
 
 圆环颜色：绿 = 充裕，红 = 快用完；圆心数字为**剩余百分比**。
 
 ## 要求
 
 - macOS 13+
-- 已登录对应服务（Codex / Cursor / `kimi login`）
+- Codex / Cursor：本机已登录即可
+- Kimi：需要 **网页** `kimi-auth`（不是 Code CLI token）
+  1. 浏览器登录 [我的额度](https://www.kimi.com/membership/subscription?tab=quota)
+  2. 菜单栏点 **导入网页登录**（自动读 Chrome/Arc/Edge/Brave cookie）
+  3. 若失败：DevTools → Cookies → 复制 `kimi-auth` → **粘贴 kimi-auth**
+  4. 或设置环境变量 `KIMI_AUTH_TOKEN`
 
 ## 运行
 

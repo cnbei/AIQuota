@@ -10,7 +10,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AIQuota",
-            path: "Sources"
+            path: "Sources",
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
         )
     ]
 )

@@ -1,210 +1,180 @@
 import Foundation
 
+/// Reads the membership "总使用量" from
+/// `https://www.kimi.com/membership/subscription?tab=quota`
+/// via `MembershipService/GetSubscriptionStats`.
 enum KimiProvider {
-    private static let usagesURL = URL(string: "https://api.kimi.com/coding/v1/usages")!
-    private static let refreshURL = URL(string: "https://auth.kimi.com/api/oauth/token")!
-    private static let clientID = "17e5f671-d194-4dfb-9706-5516cb48c098"
+    private static let statsURL = URL(
+        string: "https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
+    )!
+    private static let subscriptionURL = URL(
+        string: "https://www.kimi.com/apiv2/kimi.gateway.order.v1.SubscriptionService/GetSubscription"
+    )!
 
     static func fetch() async -> QuotaSnapshot {
-        do {
-            var creds = try loadCredentials()
-            if isExpired(creds), let refresh = creds.refreshToken, !refresh.isEmpty {
-                if let refreshed = try? await refreshAccessToken(refresh) {
-                    creds.accessToken = refreshed.access
-                    if let r = refreshed.refresh { creds.refreshToken = r }
-                    if let exp = refreshed.expiresAt { creds.expiresAt = exp }
-                    try? saveCredentials(creds)
-                }
-            }
-
-            guard let access = creds.accessToken, !access.isEmpty else {
-                return .failed(.kimi, message: "未登录 Kimi Code，请运行 kimi login")
-            }
-
-            var (data, response) = try await HTTP.get(
-                usagesURL,
-                headers: [
-                    "Authorization": "Bearer \(access)",
-                    "Accept": "application/json"
-                ]
+        guard let token = KimiWebAuth.resolveToken() else {
+            return .failed(
+                .kimi,
+                message: "需要 Kimi 网页登录态（kimi-auth）。请在浏览器登录 kimi.com 后点「导入网页登录」，或手动粘贴 cookie"
             )
+        }
 
-            if response.statusCode == 401, let refresh = creds.refreshToken, !refresh.isEmpty {
-                let refreshed = try await refreshAccessToken(refresh)
-                creds.accessToken = refreshed.access
-                if let r = refreshed.refresh { creds.refreshToken = r }
-                if let exp = refreshed.expiresAt { creds.expiresAt = exp }
-                try? saveCredentials(creds)
-                (data, response) = try await HTTP.get(
-                    usagesURL,
-                    headers: [
-                        "Authorization": "Bearer \(refreshed.access)",
-                        "Accept": "application/json"
-                    ]
-                )
-            }
-
+        do {
+            let (data, response) = try await postMembership(statsURL, token: token)
             guard (200..<300).contains(response.statusCode),
                   let json = HTTP.jsonObject(data) else {
-                return .failed(.kimi, message: "Kimi 用量接口失败 (\(response.statusCode))")
+                if response.statusCode == 401 || response.statusCode == 403 {
+                    KimiWebAuth.clearStoredToken()
+                    return .failed(.kimi, message: "kimi-auth 已失效，请重新导入网页登录")
+                }
+                return .failed(.kimi, message: "会员额度接口失败 (\(response.statusCode))")
             }
 
-            return mapUsage(json)
+            guard let snap = mapSubscriptionStats(json) else {
+                return .failed(.kimi, message: "无法解析总使用量字段")
+            }
+
+            // Best-effort plan name enrichment.
+            if snap.planName == nil,
+               let plan = await fetchPlanName(token: token) {
+                return QuotaSnapshot(
+                    provider: snap.provider,
+                    remainingPercent: snap.remainingPercent,
+                    detail: snap.detail,
+                    planName: plan,
+                    updatedAt: snap.updatedAt,
+                    error: nil
+                )
+            }
+            return snap
         } catch {
             return .failed(.kimi, message: error.localizedDescription)
         }
     }
 
-    private struct Credentials: Codable {
-        var accessToken: String?
-        var refreshToken: String?
-        var expiresAt: String?
-        var expiresIn: Int?
-        var tokenType: String?
-        var scope: String?
-
-        enum CodingKeys: String, CodingKey {
-            case accessToken = "access_token"
-            case refreshToken = "refresh_token"
-            case expiresAt = "expires_at"
-            case expiresIn = "expires_in"
-            case tokenType = "token_type"
-            case scope
+    private static func postMembership(_ url: URL, token: String) async throws -> (Data, HTTPURLResponse) {
+        var headers: [String: String] = [
+            "Content-Type": "application/json",
+            "Accept": "*/*",
+            "Authorization": "Bearer \(token)",
+            "Cookie": "kimi-auth=\(token)",
+            "Origin": "https://www.kimi.com",
+            "Referer": "https://www.kimi.com/membership/subscription?tab=quota",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+            "connect-protocol-version": "1",
+            "x-language": "zh-CN",
+            "x-msh-platform": "web",
+            "r-timezone": TimeZone.current.identifier
+        ]
+        if let session = decodeSession(token) {
+            if let deviceId = session.deviceId { headers["x-msh-device-id"] = deviceId }
+            if let sessionId = session.sessionId { headers["x-msh-session-id"] = sessionId }
+            if let trafficId = session.trafficId { headers["x-traffic-id"] = trafficId }
         }
+        return try await HTTP.post(url, headers: headers, body: Data("{}".utf8))
     }
 
-    private static func credentialsPath() -> URL {
-        if let explicit = ProcessInfo.processInfo.environment["KIMI_CODE_CREDENTIALS"]
-            ?? ProcessInfo.processInfo.environment["KIMI_CREDENTIALS"],
-           !explicit.isEmpty {
-            return URL(fileURLWithPath: explicit)
+    private static func fetchPlanName(token: String) async -> String? {
+        guard let (data, response) = try? await postMembership(subscriptionURL, token: token),
+              (200..<300).contains(response.statusCode),
+              let json = HTTP.jsonObject(data)
+        else { return nil }
+
+        // Flexible paths for plan name.
+        let candidates: [Any?] = [
+            json["productName"],
+            json["planName"],
+            json["name"],
+            (json["subscription"] as? [String: Any])?["productName"],
+            (json["subscription"] as? [String: Any])?["planName"],
+            (json["product"] as? [String: Any])?["name"],
+            (json["membership"] as? [String: Any])?["level"]
+        ]
+        for c in candidates {
+            if let s = c as? String, !s.isEmpty { return prettyPlan(s) }
         }
-        if let home = ProcessInfo.processInfo.environment["KIMI_CODE_HOME"], !home.isEmpty {
-            return URL(fileURLWithPath: home).appendingPathComponent("credentials/kimi-code.json")
-        }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".kimi-code/credentials/kimi-code.json")
+        return nil
     }
 
-    private static func loadCredentials() throws -> Credentials {
-        let url = credentialsPath()
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw NSError(domain: "AIQuota", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "未找到 Kimi 凭证，请运行 kimi login"
-            ])
-        }
-        return try JSONDecoder().decode(Credentials.self, from: Data(contentsOf: url))
-    }
+    private static func mapSubscriptionStats(_ json: [String: Any]) -> QuotaSnapshot? {
+        let balance = (json["subscriptionBalance"] as? [String: Any])
+            ?? (json["subscription_balance"] as? [String: Any])
+        guard let balance else { return nil }
 
-    private static func saveCredentials(_ creds: Credentials) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(creds).write(to: credentialsPath(), options: .atomic)
-    }
+        // amountUsedRatio is fraction used (0.3575 → 35.75% used on the website).
+        let usedRatio = JSONPath.double(balance["amountUsedRatio"])
+            ?? JSONPath.double(balance["amount_used_ratio"])
+        guard let usedRatio else { return nil }
 
-    private static func isExpired(_ creds: Credentials) -> Bool {
-        guard let expiresAt = creds.expiresAt else { return false }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = formatter.date(from: expiresAt)
-            ?? ISO8601DateFormatter().date(from: expiresAt)
-        guard let date else { return false }
-        return date.timeIntervalSinceNow <= 60
-    }
+        let usedPercent = usedRatio <= 1.0001 ? usedRatio * 100 : usedRatio
+        let remaining = max(0, min(100, 100 - usedPercent))
 
-    private static func refreshAccessToken(_ refreshToken: String) async throws -> (access: String, refresh: String?, expiresAt: String?) {
-        let body =
-            "grant_type=refresh_token&refresh_token=\(refreshToken.urlFormEncoded)&client_id=\(clientID.urlFormEncoded)"
-        let (data, response) = try await HTTP.post(
-            refreshURL,
-            headers: [
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Accept": "application/json"
-            ],
-            body: Data(body.utf8)
-        )
-        guard (200..<300).contains(response.statusCode),
-              let json = HTTP.jsonObject(data),
-              let access = json["access_token"] as? String, !access.isEmpty
-        else {
-            throw NSError(domain: "AIQuota", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "Kimi token 刷新失败，请重新 kimi login"
-            ])
-        }
-        return (access, json["refresh_token"] as? String, json["expires_at"] as? String)
-    }
-
-    private static func mapUsage(_ json: [String: Any]) -> QuotaSnapshot {
-        var remainings: [Double] = []
-        var details: [String] = []
-
-        if let usage = json["usage"] as? [String: Any] {
-            if let rem = remainingPercent(from: usage) {
-                remainings.append(rem)
-                details.append(String(format: "7d %.0f%% left", rem))
-            }
+        let expire = JSONPath.string(balance["expireTime"])
+            ?? JSONPath.string(balance["expire_time"])
+        var detail = String(format: "总使用量 %.2f%%", usedPercent)
+        if let expire, let date = parseDate(expire) {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            detail += " · 重置 \(f.string(from: date))"
         }
 
-        if let limits = json["limits"] as? [[String: Any]] {
-            for limit in limits {
-                let window = limit["window"] as? [String: Any]
-                let duration = JSONPath.double(window?["duration"]) ?? 0
-                let unit = (window?["timeUnit"] as? String) ?? (window?["time_unit"] as? String) ?? ""
-                let detail = (limit["detail"] as? [String: Any]) ?? limit
-                guard let rem = remainingPercent(from: detail) else { continue }
-                let is5h = duration == 300 && unit.uppercased().contains("MINUTE")
-                if is5h {
-                    remainings.append(rem)
-                    details.append(String(format: "5h %.0f%% left", rem))
-                }
-            }
+        // Optional Code sub-limits if present (for detail only).
+        if let code7d = json["ratelimitCode7d"] as? [String: Any]
+            ?? json["ratelimit_code_7d"] as? [String: Any],
+           let ratio = JSONPath.double(code7d["ratio"]) {
+            let codeUsed = ratio <= 1.0001 ? ratio * 100 : ratio
+            detail += String(format: " · Code7d %.2f%%", codeUsed)
         }
 
-        let membership = (json["user"] as? [String: Any])?["membership"] as? [String: Any]
-        let level = membership?["level"] as? String
-        let plan = planName(level)
-
-        let remaining = remainings.min() ?? 0
         return QuotaSnapshot(
             provider: .kimi,
             remainingPercent: remaining,
-            detail: details.isEmpty ? "无用量数据" : details.joined(separator: " · "),
-            planName: plan,
+            detail: detail,
+            planName: nil,
             updatedAt: Date(),
             error: nil
         )
     }
 
-    private static func remainingPercent(from row: [String: Any]) -> Double? {
-        let limit = JSONPath.double(row["limit"])
-        if let remaining = JSONPath.double(row["remaining"]), let limit, limit > 0 {
-            return max(0, min(100, remaining / limit * 100))
-        }
-        if let used = JSONPath.double(row["used"]), let limit, limit > 0 {
-            return max(0, min(100, (1 - used / limit) * 100))
-        }
-        if let remaining = JSONPath.double(row["remaining"]) {
-            // Some payloads already use percent-like remaining.
-            if remaining <= 100 { return remaining }
-        }
-        return nil
-    }
-
-    private static func planName(_ level: String?) -> String? {
-        switch level {
+    private static func prettyPlan(_ raw: String) -> String {
+        switch raw {
         case "LEVEL_FREE": return "Free"
         case "LEVEL_BASIC": return "Adagio"
         case "LEVEL_STANDARD": return "Moderato"
         case "LEVEL_INTERMEDIATE": return "Allegretto"
         case "LEVEL_ADVANCED": return "Allegro"
         case "LEVEL_PREMIUM": return "Vivace"
-        default: return level
+        default: return raw
         }
     }
-}
 
-private extension String {
-    var urlFormEncoded: String {
-        addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self
+    private static func parseDate(_ value: String) -> Date? {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: value) { return d }
+        return ISO8601DateFormatter().date(from: value)
+    }
+
+    private struct SessionInfo {
+        var deviceId: String?
+        var sessionId: String?
+        var trafficId: String?
+    }
+
+    private static func decodeSession(_ jwt: String) -> SessionInfo? {
+        let parts = jwt.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b64 = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64.append("=") }
+        guard let data = Data(base64Encoded: b64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return SessionInfo(
+            deviceId: json["device_id"] as? String,
+            sessionId: json["ssid"] as? String,
+            trafficId: json["sub"] as? String
+        )
     }
 }

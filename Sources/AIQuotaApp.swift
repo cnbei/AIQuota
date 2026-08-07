@@ -11,7 +11,7 @@ struct AIQuotaApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuPanel()
+            MenuPanel(isPinnedWindow: false)
                 .environmentObject(store)
         } label: {
             Image(nsImage: MenuBarIconRenderer.image(
@@ -20,11 +20,27 @@ struct AIQuotaApp: App {
             ))
         }
         .menuBarExtraStyle(.window)
+
+        // Detached floating panel that stays open while following tutorials.
+        Window("AIQuota", id: Self.pinnedWindowID) {
+            MenuPanel(isPinnedWindow: true)
+                .environmentObject(store)
+                .background(PinnedWindowConfigurator())
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 360, height: 420)
+        .commandsRemoved()
     }
+
+    static let pinnedWindowID = "aiquota-pinned-panel"
 }
 
 private struct MenuPanel: View {
     @EnvironmentObject private var store: QuotaStore
+    @Environment(\.openWindow) private var openWindow
+
+    var isPinnedWindow: Bool
+
     @State private var showKimiPaste = false
     @State private var kimiTokenDraft = ""
     @State private var kimiAuthHint: String?
@@ -50,6 +66,8 @@ private struct MenuPanel: View {
                                 .padding(.vertical, 2)
                                 .background(Color.secondary.opacity(0.12), in: Capsule())
                         }
+                        Spacer(minLength: 0)
+                        pinButton
                     }
                     Text(store.current.detail)
                         .font(.system(size: 11))
@@ -59,6 +77,12 @@ private struct MenuPanel: View {
                     Text(updatedLabel)
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
+                    if store.isPinned {
+                        Text("已固定置顶，可去浏览器操作；完成后再点取消固定")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.blue)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if let kimiAuthHint {
                         Text(kimiAuthHint)
                             .font(.system(size: 10))
@@ -66,7 +90,6 @@ private struct MenuPanel: View {
                             .lineLimit(3)
                     }
                 }
-                Spacer(minLength: 0)
             }
 
             if !store.current.windows.isEmpty {
@@ -90,24 +113,33 @@ private struct MenuPanel: View {
             .labelsHidden()
 
             if store.selected == .kimi {
-                HStack {
-                    Button("导入网页登录") {
-                        importKimiWebAuth()
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Button("导入网页登录") {
+                            importKimiWebAuth()
+                        }
+                        Button("粘贴 kimi-auth") {
+                            showKimiPaste = true
+                            kimiTokenDraft = ""
+                        }
+                        Spacer()
                     }
-                    Button("粘贴 kimi-auth") {
-                        showKimiPaste = true
-                        kimiTokenDraft = ""
+                    .buttonStyle(.borderless)
+
+                    if !store.isPinned {
+                        Text("提示：先点右上角「固定」，再去浏览器按教程复制 cookie")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
                     }
-                    Spacer()
                 }
-                .buttonStyle(.borderless)
             }
 
             if showKimiPaste {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("从浏览器 DevTools → Application → Cookies → kimi-auth 复制值：")
+                    Text("教程：打开 kimi.com → DevTools (⌥⌘I) → Application → Cookies → 复制 kimi-auth")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     TextEditor(text: $kimiTokenDraft)
                         .font(.system(size: 11, design: .monospaced))
                         .frame(height: 54)
@@ -154,14 +186,50 @@ private struct MenuPanel: View {
             .buttonStyle(.borderless)
         }
         .padding(14)
-        .frame(width: 340)
+        .frame(width: 360)
         .onAppear { store.start() }
+    }
+
+    @ViewBuilder
+    private var pinButton: some View {
+        Button {
+            togglePin()
+        } label: {
+            Image(systemName: store.isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(store.isPinned ? Color.accentColor : Color.secondary)
+                .help(store.isPinned ? "取消固定" : "固定窗口（方便对照教程）")
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(store.isPinned ? "取消固定窗口" : "固定窗口")
     }
 
     private var updatedLabel: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
         return "更新于 \(formatter.string(from: store.current.updatedAt))"
+    }
+
+    private func togglePin() {
+        if store.isPinned {
+            store.isPinned = false
+            closePinnedWindow()
+        } else {
+            store.isPinned = true
+            // Prefer Kimi when pinning to follow auth tutorial.
+            if store.selected != .kimi {
+                store.selected = .kimi
+            }
+            showKimiPaste = true
+            openWindow(id: AIQuotaApp.pinnedWindowID)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func closePinnedWindow() {
+        for window in NSApp.windows where window.title == "AIQuota" || window.identifier?.rawValue.contains(AIQuotaApp.pinnedWindowID) == true {
+            window.close()
+        }
     }
 
     private func importKimiWebAuth() {
@@ -171,8 +239,42 @@ private struct MenuPanel: View {
             Task { await store.refresh(.kimi) }
         } else {
             kimiAuthHint = "自动导入失败。请先: pip3 install --user browser-cookie3；浏览器登录 kimi.com；或改用粘贴 kimi-auth"
+            if !store.isPinned {
+                store.isPinned = true
+                showKimiPaste = true
+                openWindow(id: AIQuotaApp.pinnedWindowID)
+            }
             NSWorkspace.shared.open(QuotaProviderID.kimi.dashboardURL)
         }
+    }
+}
+
+/// Makes the detached SwiftUI Window float above other apps and stay visible.
+private struct PinnedWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            Self.configure(from: view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            Self.configure(from: nsView)
+        }
+    }
+
+    private static func configure(from view: NSView) {
+        guard let window = view.window else { return }
+        window.title = "AIQuota"
+        window.level = .floating
+        window.collectionBehavior.insert([.canJoinAllSpaces, .fullScreenAuxiliary, .moveToActiveSpace])
+        window.hidesOnDeactivate = false
+        window.isMovableByWindowBackground = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.makeKeyAndOrderFront(nil)
     }
 }
 

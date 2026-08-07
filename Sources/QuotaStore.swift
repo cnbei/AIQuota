@@ -12,6 +12,8 @@ final class QuotaStore: ObservableObject {
 
     @Published private(set) var snapshots: [QuotaProviderID: QuotaSnapshot] = [:]
     @Published private(set) var isRefreshing = false
+    /// Detached floating panel stays open while following tutorials (e.g. Kimi auth).
+    @Published var isPinned = false
 
     private var timer: Timer?
     private static let selectionKey = "aiQuota.selectedProvider"

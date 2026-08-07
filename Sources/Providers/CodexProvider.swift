@@ -39,8 +39,6 @@ enum CodexProvider {
         }
     }
 
-    // MARK: - Auth file
-
     private struct AuthFile: Codable {
         var tokens: Tokens?
         var lastRefresh: String?
@@ -82,15 +80,13 @@ enum CodexProvider {
                 NSLocalizedDescriptionKey: "未找到 ~/.codex/auth.json，请先运行 codex 登录"
             ])
         }
-        let data = try Data(contentsOf: url)
-        return try JSONDecoder().decode(AuthFile.self, from: data)
+        return try JSONDecoder().decode(AuthFile.self, from: Data(contentsOf: url))
     }
 
     private static func saveAuth(_ auth: AuthFile) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(auth)
-        try data.write(to: authPath(), options: .atomic)
+        try encoder.encode(auth).write(to: authPath(), options: .atomic)
     }
 
     private static func needsRefresh(_ auth: AuthFile) -> Bool {
@@ -159,33 +155,39 @@ enum CodexProvider {
         let plan = json["plan_type"] as? String
         let rate = json["rate_limit"] as? [String: Any]
 
-        var usedPercents: [Double] = []
-        var details: [String] = []
+        var windows: [QuotaWindow] = []
 
-        func consider(_ window: [String: Any]?, label: String) {
+        func consider(_ window: [String: Any]?) {
             guard let window else { return }
             let seconds = JSONPath.double(window["limit_window_seconds"]) ?? 0
-            let used = JSONPath.double(window["used_percent"]) ?? 0
-            let name: String
-            if seconds <= 6 * 3600 { name = "5h" }
-            else if seconds >= 6 * 24 * 3600 { name = "7d" }
-            else { name = label }
-            usedPercents.append(used)
-            details.append(String(format: "%@ %.0f%% used", name, used))
+            guard let kind = QuotaWindowKind.fromWindowSeconds(seconds) else { return }
+            let used = JSONPath.double(window["used_percent"])
+            var resetsAt: Date?
+            if let ts = JSONPath.double(window["reset_at"]) {
+                resetsAt = Date(timeIntervalSince1970: ts)
+            } else if let after = JSONPath.double(window["reset_after_seconds"]) {
+                resetsAt = Date().addingTimeInterval(after)
+            }
+            windows.append(QuotaWindow(kind: kind, title: nil, usedPercent: used, resetsAt: resetsAt))
         }
 
-        consider(rate?["primary_window"] as? [String: Any], label: "primary")
-        consider(rate?["secondary_window"] as? [String: Any], label: "secondary")
+        consider(rate?["primary_window"] as? [String: Any])
+        consider(rate?["secondary_window"] as? [String: Any])
+        windows.sort { $0.kind.sortOrder < $1.kind.sortOrder }
 
-        // Prefer the tighter (higher used) window for the ring.
-        let used = usedPercents.max() ?? 0
+        let used = windows.compactMap(\.usedPercent).max() ?? 0
         let remaining = max(0, min(100, 100 - used))
+        let detail = windows.isEmpty
+            ? "无窗口数据"
+            : windows.map { String(format: "%@ %.0f%%", $0.kind.label, $0.usedPercent ?? 0) }
+                .joined(separator: " · ")
 
         return QuotaSnapshot(
             provider: .codex,
             remainingPercent: remaining,
-            detail: details.isEmpty ? "无窗口数据" : details.joined(separator: " · "),
+            detail: detail,
             planName: plan,
+            windows: windows,
             updatedAt: Date(),
             error: nil
         )

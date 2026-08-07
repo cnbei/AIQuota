@@ -10,6 +10,9 @@ enum KimiProvider {
     private static let subscriptionURL = URL(
         string: "https://www.kimi.com/apiv2/kimi.gateway.order.v1.SubscriptionService/GetSubscription"
     )!
+    private static let codingUsagesURL = URL(
+        string: "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
+    )!
 
     static func fetch() async -> QuotaSnapshot {
         guard let token = KimiWebAuth.resolveToken() else {
@@ -30,21 +33,29 @@ enum KimiProvider {
                 return .failed(.kimi, message: "会员额度接口失败 (\(response.statusCode))")
             }
 
-            guard let snap = mapSubscriptionStats(json) else {
+            guard var snap = mapSubscriptionStats(json) else {
                 return .failed(.kimi, message: "无法解析总使用量字段")
             }
 
-            // Best-effort plan name enrichment.
+            // Fill missing 5h / 7d Code windows from billing GetUsages.
+            let has5h = snap.windows.contains { $0.kind == .fiveHour }
+            let has7d = snap.windows.contains { $0.kind == .sevenDay }
+            if (!has5h || !has7d),
+               let codingWindows = await fetchCodingWindows(token: token) {
+                for window in codingWindows {
+                    if window.kind == .fiveHour && has5h { continue }
+                    if window.kind == .sevenDay && has7d { continue }
+                    if snap.windows.contains(where: { $0.kind == window.kind && $0.title == window.title }) {
+                        continue
+                    }
+                    snap.windows.append(window)
+                }
+                snap.windows.sort { $0.kind.sortOrder < $1.kind.sortOrder }
+            }
+
             if snap.planName == nil,
                let plan = await fetchPlanName(token: token) {
-                return QuotaSnapshot(
-                    provider: snap.provider,
-                    remainingPercent: snap.remainingPercent,
-                    detail: snap.detail,
-                    planName: plan,
-                    updatedAt: snap.updatedAt,
-                    error: nil
-                )
+                snap.planName = plan
             }
             return snap
         } catch {
@@ -52,7 +63,71 @@ enum KimiProvider {
         }
     }
 
-    private static func postMembership(_ url: URL, token: String) async throws -> (Data, HTTPURLResponse) {
+    private static func fetchCodingWindows(token: String) async -> [QuotaWindow]? {
+        var requestBody = Data()
+        if let data = try? JSONSerialization.data(withJSONObject: ["scope": ["FEATURE_CODING"]]) {
+            requestBody = data
+        }
+        guard let (data, response) = try? await postMembership(codingUsagesURL, token: token, body: requestBody),
+              (200..<300).contains(response.statusCode),
+              let json = HTTP.jsonObject(data),
+              let usages = json["usages"] as? [[String: Any]],
+              let coding = usages.first(where: { ($0["scope"] as? String) == "FEATURE_CODING" })
+        else { return nil }
+
+        var windows: [QuotaWindow] = []
+
+        if let detail = coding["detail"] as? [String: Any] {
+            let used = usedPercent(from: detail)
+            let reset = JSONPath.string(detail["resetTime"])
+                ?? JSONPath.string(detail["reset_time"])
+            windows.append(QuotaWindow(
+                kind: .sevenDay,
+                title: "Code",
+                usedPercent: used,
+                resetsAt: reset.flatMap(parseDate)
+            ))
+        }
+
+        if let limits = coding["limits"] as? [[String: Any]] {
+            for limit in limits {
+                let window = limit["window"] as? [String: Any]
+                let duration = JSONPath.double(window?["duration"]) ?? 0
+                let unit = ((window?["timeUnit"] as? String) ?? (window?["time_unit"] as? String) ?? "").uppercased()
+                let detail = (limit["detail"] as? [String: Any]) ?? [:]
+                let used = usedPercent(from: detail)
+                let reset = JSONPath.string(detail["resetTime"])
+                    ?? JSONPath.string(detail["reset_time"])
+                if duration == 300 && unit.contains("MINUTE") {
+                    windows.append(QuotaWindow(
+                        kind: .fiveHour,
+                        title: "Code",
+                        usedPercent: used,
+                        resetsAt: reset.flatMap(parseDate)
+                    ))
+                }
+            }
+        }
+
+        return windows.isEmpty ? nil : windows
+    }
+
+    private static func usedPercent(from detail: [String: Any]) -> Double? {
+        let limit = JSONPath.double(detail["limit"])
+        if let used = JSONPath.double(detail["used"]), let limit, limit > 0 {
+            return used / limit * 100
+        }
+        if let remaining = JSONPath.double(detail["remaining"]), let limit, limit > 0 {
+            return (1 - remaining / limit) * 100
+        }
+        return nil
+    }
+
+    private static func postMembership(
+        _ url: URL,
+        token: String,
+        body: Data = Data("{}".utf8)
+    ) async throws -> (Data, HTTPURLResponse) {
         var headers: [String: String] = [
             "Content-Type": "application/json",
             "Accept": "*/*",
@@ -71,7 +146,7 @@ enum KimiProvider {
             if let sessionId = session.sessionId { headers["x-msh-session-id"] = sessionId }
             if let trafficId = session.trafficId { headers["x-traffic-id"] = trafficId }
         }
-        return try await HTTP.post(url, headers: headers, body: Data("{}".utf8))
+        return try await HTTP.post(url, headers: headers, body: body)
     }
 
     private static func fetchPlanName(token: String) async -> String? {
@@ -111,26 +186,57 @@ enum KimiProvider {
 
         let expire = JSONPath.string(balance["expireTime"])
             ?? JSONPath.string(balance["expire_time"])
-        var detail = String(format: "总使用量 %.2f%%", usedPercent)
-        if let expire, let date = parseDate(expire) {
-            let f = DateFormatter()
-            f.dateFormat = "yyyy-MM-dd"
-            detail += " · 重置 \(f.string(from: date))"
+        let monthReset = expire.flatMap(parseDate)
+
+        var windows: [QuotaWindow] = [
+            QuotaWindow(
+                kind: .thirtyDay,
+                title: "总使用量",
+                usedPercent: usedPercent,
+                resetsAt: monthReset
+            )
+        ]
+
+        // Code 5h / 7d rate limits from the same membership stats payload.
+        func appendCodeLimit(keyCandidates: [String], kind: QuotaWindowKind, title: String) {
+            for key in keyCandidates {
+                guard let row = json[key] as? [String: Any] else { continue }
+                let ratio = JSONPath.double(row["ratio"])
+                let used: Double? = ratio.map { $0 <= 1.0001 ? $0 * 100 : $0 }
+                let reset = JSONPath.string(row["resetTime"])
+                    ?? JSONPath.string(row["reset_time"])
+                    ?? JSONPath.string(row["expireTime"])
+                windows.append(QuotaWindow(
+                    kind: kind,
+                    title: title,
+                    usedPercent: used,
+                    resetsAt: reset.flatMap(parseDate)
+                ))
+                return
+            }
         }
 
-        // Optional Code sub-limits if present (for detail only).
-        if let code7d = json["ratelimitCode7d"] as? [String: Any]
-            ?? json["ratelimit_code_7d"] as? [String: Any],
-           let ratio = JSONPath.double(code7d["ratio"]) {
-            let codeUsed = ratio <= 1.0001 ? ratio * 100 : ratio
-            detail += String(format: " · Code7d %.2f%%", codeUsed)
-        }
+        appendCodeLimit(
+            keyCandidates: ["ratelimitCode5h", "ratelimit_code_5h", "rateLimitCode5h"],
+            kind: .fiveHour,
+            title: "Code"
+        )
+        appendCodeLimit(
+            keyCandidates: ["ratelimitCode7d", "ratelimit_code_7d", "rateLimitCode7d"],
+            kind: .sevenDay,
+            title: "Code"
+        )
+
+        windows.sort { $0.kind.sortOrder < $1.kind.sortOrder }
+
+        let detail = String(format: "总使用量 %.2f%%", usedPercent)
 
         return QuotaSnapshot(
             provider: .kimi,
             remainingPercent: remaining,
             detail: detail,
             planName: nil,
+            windows: windows,
             updatedAt: Date(),
             error: nil
         )

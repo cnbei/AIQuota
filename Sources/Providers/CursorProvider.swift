@@ -177,11 +177,44 @@ enum CursorProvider {
             ?? JSONPath.string((json["plan"] as? [String: Any])?["name"])
             ?? "Pro"
 
+        // Billing cycle end is shared by both pools (monthly / ~30d).
+        var resetsAt: Date?
+        if let endMs = JSONPath.double(json["billingCycleEnd"]) {
+            resetsAt = Date(timeIntervalSince1970: endMs / 1000)
+        }
+
+        var windows: [QuotaWindow] = []
+        if let autoPercent {
+            windows.append(QuotaWindow(
+                kind: .thirtyDay,
+                title: "Cursor Models",
+                usedPercent: autoPercent,
+                resetsAt: resetsAt
+            ))
+        }
+        if let apiPercent {
+            windows.append(QuotaWindow(
+                kind: .thirtyDay,
+                title: "Other Models",
+                usedPercent: apiPercent,
+                resetsAt: resetsAt
+            ))
+        }
+        if windows.isEmpty, let totalPercent {
+            windows.append(QuotaWindow(
+                kind: .thirtyDay,
+                title: "Total",
+                usedPercent: totalPercent,
+                resetsAt: resetsAt
+            ))
+        }
+
         return QuotaSnapshot(
             provider: .cursor,
             remainingPercent: max(0, min(100, remaining)),
             detail: usedDisplay,
             planName: plan,
+            windows: windows,
             updatedAt: Date(),
             error: nil
         )
@@ -201,11 +234,21 @@ enum CursorProvider {
         }
         guard let best else { return nil }
         let remaining = max(0, min(100, (1 - best.used / best.max) * 100))
+
+        var resetsAt: Date?
+        if let start = JSONPath.string(json["startOfMonth"]),
+           let startDate = ISO8601DateFormatter().date(from: start) {
+            resetsAt = Calendar.current.date(byAdding: .month, value: 1, to: startDate)
+        }
+
         return QuotaSnapshot(
             provider: .cursor,
             remainingPercent: remaining,
             detail: String(format: "%.0f / %.0f requests", best.used, best.max),
             planName: nil,
+            windows: [
+                QuotaWindow(kind: .thirtyDay, title: "Requests", usedPercent: best.used / best.max * 100, resetsAt: resetsAt)
+            ],
             updatedAt: Date(),
             error: nil
         )

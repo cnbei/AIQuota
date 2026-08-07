@@ -1,46 +1,75 @@
 # AIQuota
 
-macOS 菜单栏小工具：用彩色圆环显示 AI 编码额度剩余百分比。
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-支持：
+macOS menu bar app that shows remaining AI coding quota as a colored ring.
 
-- **Codex**（默认）— 读 `~/.codex/auth.json`
-- **Cursor** — 读 Cursor 本机登录态
-- **Kimi** — 读会员页「总使用量」（`membership/subscription?tab=quota`）
+**Providers**
 
-圆环颜色：绿 = 充裕，红 = 快用完；圆心数字为**剩余百分比**。
+| Provider | Source | What the ring shows |
+| --- | --- | --- |
+| **Codex** (default) | `~/.codex/auth.json` → ChatGPT usage API | Remaining quota % |
+| **Cursor** | Local Cursor login (`state.vscdb`) → Dashboard usage API | Remaining **Cursor Models** % (aligned with [Spending](https://cursor.com/dashboard/spending)) |
+| **Kimi** | Website `kimi-auth` cookie → membership stats | Remaining **membership total usage** % |
 
-## 要求
+Ring colors: green = plenty left, red = almost used up. The number in the center is **remaining percent**.
+
+## Requirements
 
 - macOS 13+
-- Codex / Cursor：本机已登录即可
-- Kimi：需要 **网页** `kimi-auth`（不是 Code CLI token）
-  1. 浏览器登录 [我的额度](https://www.kimi.com/membership/subscription?tab=quota)
-  2. 菜单栏点 **导入网页登录**（自动读 Chrome/Arc/Edge/Brave cookie）
-  3. 若失败：DevTools → Cookies → 复制 `kimi-auth` → **粘贴 kimi-auth**
-  4. 或设置环境变量 `KIMI_AUTH_TOKEN`
+- Xcode Command Line Tools / Swift 5.9+
+- **Codex / Cursor**: already signed in on this Mac
+- **Kimi**: website session cookie `kimi-auth` (not the Code CLI OAuth token)
 
-## 运行
+Optional (for one-click Kimi import):
+
+```bash
+pip3 install --user browser-cookie3
+```
+
+## Run
 
 ```bash
 ./scripts/run.sh
 ```
 
-会编译并启动 `dist/AIQuota.app`（无 Dock 图标的菜单栏 App）。
+Builds a release binary and launches `dist/AIQuota.app` (menu-bar only, no Dock icon via `LSUIElement`).
 
-仅编译：
+Build only:
 
 ```bash
 swift build -c release
 ```
 
-## 使用
+## Usage
 
-1. 点菜单栏圆环打开面板  
-2. 分段控件切换 Codex / Cursor / Kimi  
-3. **刷新** 手动拉取；默认约每 3 分钟自动刷新  
-4. **打开控制台** 跳转对应用量页  
+1. Click the menu bar ring to open the panel.
+2. Use the segmented control to switch **Codex / Cursor / Kimi**.
+3. **Refresh** pulls the latest usage (auto-refresh about every 3 minutes).
+4. **Open dashboard** jumps to the provider’s usage page.
+5. **Pin** (top-right) floats a sticky panel so it stays open while you follow browser steps (useful for Kimi auth).
 
-## 说明
+The panel also lists **reset schedule** windows when the API provides them (e.g. 5h / 7d / 30d).
 
-用量接口多为非官方内部 API，可能随厂商改动失效。本工具只在本机读取已有登录态，不上传任何凭证。
+### Kimi auth
+
+Kimi Code CLI tokens cannot call the membership stats API (401). You need the website cookie:
+
+1. Sign in at [My quota](https://www.kimi.com/membership/subscription?tab=quota).
+2. In AIQuota, switch to **Kimi** → **Import web login** (reads Chrome / Edge / Brave / Chromium / Safari cookies via `browser-cookie3`).
+3. If that fails: DevTools → Application → Cookies → copy `kimi-auth` → **Paste kimi-auth**.
+4. Or set env var `KIMI_AUTH_TOKEN`.
+
+The token is cached under `~/Library/Application Support/AIQuota/`.
+
+Kimi auth UI (tutorial / paste / import) appears **only** on the Kimi tab.
+
+## Privacy
+
+Credentials stay on your machine. The app only uses existing local login state (or a cookie you paste) to call each provider’s usage endpoint. Nothing is uploaded to a third-party server.
+
+Usage APIs are unofficial / internal and may break when vendors change them.
+
+## License
+
+Use and modify freely for personal use.

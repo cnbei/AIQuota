@@ -125,8 +125,7 @@ enum CursorProvider {
         let totalPercent = JSONPath.double(planUsage["totalPercentUsed"])
             ?? JSONPath.double(json["totalPercentUsed"])
 
-        // Match the Spending page: ring follows Cursor Models (auto), detail shows both pools.
-        // Fallback to the tighter of known pools, then total, then dollar fields.
+        // Default ring: Cursor Models; UI can switch to Other Models via metrics.
         let usedForRing: Double?
         if let autoPercent {
             usedForRing = autoPercent
@@ -209,6 +208,13 @@ enum CursorProvider {
             ))
         }
 
+        let metrics = QuotaMetrics(
+            cursorModelsUsed: autoPercent,
+            otherModelsUsed: apiPercent,
+            kimiMembershipUsed: nil,
+            kimiCodeUsed: nil
+        )
+
         return QuotaSnapshot(
             provider: .cursor,
             remainingPercent: max(0, min(100, remaining)),
@@ -216,7 +222,8 @@ enum CursorProvider {
             planName: plan,
             windows: windows,
             updatedAt: Date(),
-            error: nil
+            error: nil,
+            metrics: metrics
         )
     }
 

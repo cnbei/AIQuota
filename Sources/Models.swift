@@ -28,6 +28,45 @@ enum QuotaProviderID: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// Which Cursor Spending pool drives the menu-bar ring.
+enum CursorDisplayMode: String, CaseIterable, Identifiable, Codable {
+    case cursorModels
+    case otherModels
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .cursorModels: return "Cursor Models"
+        case .otherModels: return "Other Models"
+        }
+    }
+}
+
+/// Which Kimi metric drives the menu-bar ring.
+enum KimiDisplayMode: String, CaseIterable, Identifiable, Codable {
+    case membership
+    case code
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .membership: return "总体"
+        case .code: return "Kimi Code"
+        }
+    }
+}
+
+/// Raw used% values so the ring can switch without refetching.
+struct QuotaMetrics: Equatable, Sendable {
+    var cursorModelsUsed: Double?
+    var otherModelsUsed: Double?
+    var kimiMembershipUsed: Double?
+    /// Most constrained Code window used% (max of 5h / 7d).
+    var kimiCodeUsed: Double?
+}
+
 enum QuotaWindowKind: String, Equatable, Sendable, CaseIterable {
     case fiveHour
     case sevenDay
@@ -83,6 +122,8 @@ struct QuotaSnapshot: Equatable, Sendable {
     var windows: [QuotaWindow]
     var updatedAt: Date
     var error: String?
+    /// Optional dual metrics for Cursor / Kimi display-mode switching.
+    var metrics: QuotaMetrics? = nil
 
     static func loading(_ provider: QuotaProviderID) -> QuotaSnapshot {
         QuotaSnapshot(
@@ -106,6 +147,114 @@ struct QuotaSnapshot: Equatable, Sendable {
             updatedAt: Date(),
             error: message
         )
+    }
+
+    /// Apply user display preference to ring + detail (uses cached metrics).
+    func applying(
+        cursorMode: CursorDisplayMode,
+        kimiMode: KimiDisplayMode
+    ) -> QuotaSnapshot {
+        guard error == nil else { return self }
+        var snap = self
+        switch provider {
+        case .cursor:
+            let used: Double?
+            switch cursorMode {
+            case .cursorModels:
+                used = metrics?.cursorModelsUsed ?? metrics?.otherModelsUsed
+            case .otherModels:
+                used = metrics?.otherModelsUsed ?? metrics?.cursorModelsUsed
+            }
+            if let used {
+                snap.remainingPercent = max(0, min(100, 100 - used))
+            }
+            snap.detail = Self.cursorDetail(
+                mode: cursorMode,
+                metrics: metrics,
+                fallback: detail
+            )
+        case .kimi:
+            let used: Double?
+            switch kimiMode {
+            case .membership:
+                used = metrics?.kimiMembershipUsed ?? metrics?.kimiCodeUsed
+            case .code:
+                used = metrics?.kimiCodeUsed ?? metrics?.kimiMembershipUsed
+            }
+            if let used {
+                snap.remainingPercent = max(0, min(100, 100 - used))
+            }
+            snap.detail = Self.kimiDetail(
+                mode: kimiMode,
+                metrics: metrics,
+                windows: windows,
+                fallback: detail
+            )
+        case .codex:
+            break
+        }
+        return snap
+    }
+
+    private static func cursorDetail(
+        mode: CursorDisplayMode,
+        metrics: QuotaMetrics?,
+        fallback: String
+    ) -> String {
+        guard let metrics else { return fallback }
+        var parts: [String] = []
+        switch mode {
+        case .cursorModels:
+            if let u = metrics.cursorModelsUsed {
+                parts.append(String(format: "Cursor Models %.0f%% used", u))
+            }
+            if let u = metrics.otherModelsUsed {
+                parts.append(String(format: "Other %.0f%% used", u))
+            }
+        case .otherModels:
+            if let u = metrics.otherModelsUsed {
+                parts.append(String(format: "Other Models %.0f%% used", u))
+            }
+            if let u = metrics.cursorModelsUsed {
+                parts.append(String(format: "Cursor Models %.0f%% used", u))
+            }
+        }
+        return parts.isEmpty ? fallback : parts.joined(separator: " · ")
+    }
+
+    private static func kimiDetail(
+        mode: KimiDisplayMode,
+        metrics: QuotaMetrics?,
+        windows: [QuotaWindow],
+        fallback: String
+    ) -> String {
+        guard let metrics else { return fallback }
+        switch mode {
+        case .membership:
+            if let u = metrics.kimiMembershipUsed {
+                var parts = [String(format: "总使用量 %.2f%%", u)]
+                if let code = metrics.kimiCodeUsed {
+                    parts.append(String(format: "Code %.0f%% used", code))
+                }
+                return parts.joined(separator: " · ")
+            }
+        case .code:
+            let codeWindows = windows.filter { ($0.title ?? "").localizedCaseInsensitiveContains("code") }
+            var parts: [String] = []
+            for w in codeWindows.sorted(by: { $0.kind.sortOrder < $1.kind.sortOrder }) {
+                if let used = w.usedPercent {
+                    parts.append(String(format: "%@ %.0f%% used", w.kind.label, used))
+                }
+            }
+            if parts.isEmpty, let code = metrics.kimiCodeUsed {
+                parts.append(String(format: "Code %.0f%% used", code))
+            }
+            if let m = metrics.kimiMembershipUsed {
+                parts.append(String(format: "总体 %.2f%%", m))
+            }
+            if !parts.isEmpty { return parts.joined(separator: " · ") }
+        }
+        return fallback
     }
 }
 

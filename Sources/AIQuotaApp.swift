@@ -97,8 +97,34 @@ private struct MenuPanel: View {
             .pickerStyle(.segmented)
             .labelsHidden()
 
+            if store.selected == .cursor {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("状态栏显示")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Picker("Cursor 显示", selection: $store.cursorDisplayMode) {
+                        ForEach(CursorDisplayMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+            }
+
             if store.selected == .kimi {
                 VStack(alignment: .leading, spacing: 6) {
+                    Text("状态栏显示")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Picker("Kimi 显示", selection: $store.kimiDisplayMode) {
+                        ForEach(KimiDisplayMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
                     HStack {
                         Button("导入网页登录") {
                             importKimiWebAuth()

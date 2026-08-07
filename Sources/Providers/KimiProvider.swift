@@ -46,6 +46,17 @@ enum KimiProvider {
                let plan = await fetchPlanName(token: token) {
                 snap.planName = plan
             }
+
+            // Refresh Code used% after merging GetUsages windows.
+            let codeUsed = snap.windows
+                .filter { ($0.title ?? "").localizedCaseInsensitiveContains("code") }
+                .compactMap(\.usedPercent)
+                .max()
+            if var metrics = snap.metrics {
+                metrics.kimiCodeUsed = codeUsed ?? metrics.kimiCodeUsed
+                snap.metrics = metrics
+            }
+
             return snap
         } catch {
             return .failed(.kimi, message: error.localizedDescription)
@@ -248,7 +259,18 @@ enum KimiProvider {
 
         windows.sort { $0.kind.sortOrder < $1.kind.sortOrder }
 
+        let codeUsed = windows
+            .filter { ($0.title ?? "").localizedCaseInsensitiveContains("code") }
+            .compactMap(\.usedPercent)
+            .max()
+
         let detail = String(format: "总使用量 %.2f%%", usedPercent)
+        let metrics = QuotaMetrics(
+            cursorModelsUsed: nil,
+            otherModelsUsed: nil,
+            kimiMembershipUsed: usedPercent,
+            kimiCodeUsed: codeUsed
+        )
 
         return QuotaSnapshot(
             provider: .kimi,
@@ -257,7 +279,8 @@ enum KimiProvider {
             planName: nil,
             windows: windows,
             updatedAt: Date(),
-            error: nil
+            error: nil,
+            metrics: metrics
         )
     }
 

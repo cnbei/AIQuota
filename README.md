@@ -48,8 +48,10 @@ swift build -c release
 3. **Refresh** pulls the latest usage (auto-refresh about every 3 minutes).
 4. **Open dashboard** jumps to the provider’s usage page.
 5. **Pin** (top-right) floats a sticky panel so it stays open while you follow browser steps (useful for Kimi auth).
+6. On **Cursor**, switch the menu-bar ring between **Cursor Models** and **Other Models**.
+7. On **Kimi**, switch the menu-bar ring between **总体** (membership total) and **Kimi Code** (tightest of Code 5h / 7d).
 
-The panel also lists **reset schedule** windows when the API provides them (e.g. 5h / 7d / 30d).
+The panel also lists **reset schedule** windows when the API provides them (e.g. 5h / 7d / 30d). Preferences persist across launches.
 
 ### Kimi auth
 

@@ -10,6 +10,20 @@ final class QuotaStore: ObservableObject {
         }
     }
 
+    /// Cursor ring: Cursor Models vs Other Models.
+    @Published var cursorDisplayMode: CursorDisplayMode {
+        didSet {
+            UserDefaults.standard.set(cursorDisplayMode.rawValue, forKey: Self.cursorModeKey)
+        }
+    }
+
+    /// Kimi ring: membership total vs Kimi Code rate limits.
+    @Published var kimiDisplayMode: KimiDisplayMode {
+        didSet {
+            UserDefaults.standard.set(kimiDisplayMode.rawValue, forKey: Self.kimiModeKey)
+        }
+    }
+
     @Published private(set) var snapshots: [QuotaProviderID: QuotaSnapshot] = [:]
     @Published private(set) var isRefreshing = false
     /// Detached floating panel stays open while following tutorials (e.g. Kimi auth).
@@ -17,6 +31,8 @@ final class QuotaStore: ObservableObject {
 
     private var timer: Timer?
     private static let selectionKey = "aiQuota.selectedProvider"
+    private static let cursorModeKey = "aiQuota.cursorDisplayMode"
+    private static let kimiModeKey = "aiQuota.kimiDisplayMode"
     private static let refreshSeconds: TimeInterval = 180
 
     init() {
@@ -26,13 +42,29 @@ final class QuotaStore: ObservableObject {
         } else {
             selected = .codex
         }
+
+        if let raw = UserDefaults.standard.string(forKey: Self.cursorModeKey),
+           let mode = CursorDisplayMode(rawValue: raw) {
+            cursorDisplayMode = mode
+        } else {
+            cursorDisplayMode = .cursorModels
+        }
+
+        if let raw = UserDefaults.standard.string(forKey: Self.kimiModeKey),
+           let mode = KimiDisplayMode(rawValue: raw) {
+            kimiDisplayMode = mode
+        } else {
+            kimiDisplayMode = .membership
+        }
+
         for id in QuotaProviderID.allCases {
             snapshots[id] = .loading(id)
         }
     }
 
     var current: QuotaSnapshot {
-        snapshots[selected] ?? .loading(selected)
+        let raw = snapshots[selected] ?? .loading(selected)
+        return raw.applying(cursorMode: cursorDisplayMode, kimiMode: kimiDisplayMode)
     }
 
     func start() {

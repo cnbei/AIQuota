@@ -63,12 +63,12 @@ private struct MenuPanel: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                     if store.isPinned {
-                        Text("已固定置顶，可去浏览器操作；完成后再点取消固定")
+                        Text("已固定置顶，切换应用也不会关闭")
                             .font(.system(size: 10))
                             .foregroundStyle(.blue)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let kimiAuthHint {
+                    if store.selected == .kimi, let kimiAuthHint {
                         Text(kimiAuthHint)
                             .font(.system(size: 10))
                             .foregroundStyle(.orange)
@@ -116,36 +116,34 @@ private struct MenuPanel: View {
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
-                }
-            }
 
-            if showKimiPaste {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("教程：打开 kimi.com → DevTools (⌥⌘I) → Application → Cookies → 复制 kimi-auth")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    TextEditor(text: $kimiTokenDraft)
-                        .font(.system(size: 11, design: .monospaced))
-                        .frame(height: 54)
-                        .border(Color.secondary.opacity(0.3))
-                    HStack {
-                        Button("保存并刷新") {
-                            let token = kimiTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !token.isEmpty else { return }
-                            do {
-                                try KimiWebAuth.saveStoredToken(token)
-                                showKimiPaste = false
-                                kimiAuthHint = "已保存网页登录态"
-                                Task { await store.refresh(.kimi) }
-                            } catch {
-                                kimiAuthHint = "保存失败：\(error.localizedDescription)"
+                    if showKimiPaste {
+                        Text("教程：打开 kimi.com → DevTools (⌥⌘I) → Application → Cookies → 复制 kimi-auth")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        TextEditor(text: $kimiTokenDraft)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(height: 54)
+                            .border(Color.secondary.opacity(0.3))
+                        HStack {
+                            Button("保存并刷新") {
+                                let token = kimiTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !token.isEmpty else { return }
+                                do {
+                                    try KimiWebAuth.saveStoredToken(token)
+                                    showKimiPaste = false
+                                    kimiAuthHint = "已保存网页登录态"
+                                    Task { await store.refresh(.kimi) }
+                                } catch {
+                                    kimiAuthHint = "保存失败：\(error.localizedDescription)"
+                                }
                             }
+                            Button("取消") { showKimiPaste = false }
+                            Spacer()
                         }
-                        Button("取消") { showKimiPaste = false }
-                        Spacer()
+                        .buttonStyle(.borderless)
                     }
-                    .buttonStyle(.borderless)
                 }
             }
 
@@ -173,6 +171,12 @@ private struct MenuPanel: View {
         .padding(14)
         .frame(width: 360)
         .onAppear { store.start() }
+        .onChange(of: store.selected) { newValue in
+            if newValue != .kimi {
+                showKimiPaste = false
+                kimiAuthHint = nil
+            }
+        }
     }
 
     private var pinButton: some View {
@@ -199,11 +203,11 @@ private struct MenuPanel: View {
             store.isPinned = false
             PinnedPanelController.shared.hide()
         } else {
-            if store.selected != .kimi {
-                store.selected = .kimi
-            }
-            showKimiPaste = true
             store.isPinned = true
+            // Only auto-open the paste tutorial when already on Kimi.
+            if store.selected == .kimi {
+                showKimiPaste = true
+            }
             PinnedPanelController.shared.show(store: store)
         }
     }

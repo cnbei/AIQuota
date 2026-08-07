@@ -37,20 +37,9 @@ enum KimiProvider {
                 return .failed(.kimi, message: "无法解析总使用量字段")
             }
 
-            // Fill missing 5h / 7d Code windows from billing GetUsages.
-            let has5h = snap.windows.contains { $0.kind == .fiveHour }
-            let has7d = snap.windows.contains { $0.kind == .sevenDay }
-            if (!has5h || !has7d),
-               let codingWindows = await fetchCodingWindows(token: token) {
-                for window in codingWindows {
-                    if window.kind == .fiveHour && has5h { continue }
-                    if window.kind == .sevenDay && has7d { continue }
-                    if snap.windows.contains(where: { $0.kind == window.kind && $0.title == window.title }) {
-                        continue
-                    }
-                    snap.windows.append(window)
-                }
-                snap.windows.sort { $0.kind.sortOrder < $1.kind.sortOrder }
+            // Always try GetUsages to fill Code 5h/7d used% (stats omits ratio when 0%).
+            if let codingWindows = await fetchCodingWindows(token: token) {
+                snap.windows = mergeWindows(snap.windows, with: codingWindows)
             }
 
             if snap.planName == nil,
@@ -61,6 +50,28 @@ enum KimiProvider {
         } catch {
             return .failed(.kimi, message: error.localizedDescription)
         }
+    }
+
+    /// Prefer existing membership windows; fill missing used% / reset from coding usages.
+    private static func mergeWindows(_ base: [QuotaWindow], with extra: [QuotaWindow]) -> [QuotaWindow] {
+        var result = base
+        for window in extra {
+            if let idx = result.firstIndex(where: { $0.kind == window.kind && ($0.title ?? "") == (window.title ?? "") }) {
+                var merged = result[idx]
+                if merged.usedPercent == nil { merged.usedPercent = window.usedPercent }
+                if merged.resetsAt == nil { merged.resetsAt = window.resetsAt }
+                result[idx] = merged
+            } else if let idx = result.firstIndex(where: { $0.kind == window.kind }) {
+                var merged = result[idx]
+                if merged.usedPercent == nil { merged.usedPercent = window.usedPercent }
+                if merged.resetsAt == nil { merged.resetsAt = window.resetsAt }
+                if merged.title == nil { merged.title = window.title }
+                result[idx] = merged
+            } else {
+                result.append(window)
+            }
+        }
+        return result.sorted { $0.kind.sortOrder < $1.kind.sortOrder }
     }
 
     private static func fetchCodingWindows(token: String) async -> [QuotaWindow]? {
@@ -198,11 +209,19 @@ enum KimiProvider {
         ]
 
         // Code 5h / 7d rate limits from the same membership stats payload.
+        // Note: when a window is at 0% used, Kimi often omits `ratio` entirely.
         func appendCodeLimit(keyCandidates: [String], kind: QuotaWindowKind, title: String) {
             for key in keyCandidates {
                 guard let row = json[key] as? [String: Any] else { continue }
                 let ratio = JSONPath.double(row["ratio"])
-                let used: Double? = ratio.map { $0 <= 1.0001 ? $0 * 100 : $0 }
+                let used: Double?
+                if let ratio {
+                    used = ratio <= 1.0001 ? ratio * 100 : ratio
+                } else if row["enabled"] as? Bool == true {
+                    used = 0
+                } else {
+                    used = nil
+                }
                 let reset = JSONPath.string(row["resetTime"])
                     ?? JSONPath.string(row["reset_time"])
                     ?? JSONPath.string(row["expireTime"])
@@ -255,10 +274,24 @@ enum KimiProvider {
     }
 
     private static func parseDate(_ value: String) -> Date? {
+        let isoFrac = ISO8601DateFormatter()
+        isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = isoFrac.date(from: value) { return d }
+
         let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        iso.formatOptions = [.withInternetDateTime]
         if let d = iso.date(from: value) { return d }
-        return ISO8601DateFormatter().date(from: value)
+
+        // Kimi sometimes returns >3 fractional digits; trim to milliseconds.
+        if let dot = value.firstIndex(of: "."),
+           let z = value.lastIndex(of: "Z"),
+           z > dot {
+            let frac = value[value.index(after: dot)..<z]
+            let trimmed = String(frac.prefix(3)).padding(toLength: 3, withPad: "0", startingAt: 0)
+            let normalized = String(value[..<value.index(after: dot)]) + trimmed + "Z"
+            if let d = isoFrac.date(from: normalized) { return d }
+        }
+        return nil
     }
 
     private struct SessionInfo {

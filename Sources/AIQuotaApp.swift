@@ -198,6 +198,10 @@ private struct ResetScheduleRow: View {
                         Text(String(format: "%.0f%% used", used))
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                    } else {
+                        Text("用量未知")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
                     }
                     Spacer(minLength: 0)
                 }

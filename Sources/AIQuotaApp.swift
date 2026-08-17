@@ -80,13 +80,20 @@ private struct MenuPanel: View {
             if !store.current.windows.isEmpty {
                 Divider()
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("重置日程")
+                    Text(store.selected == .grok ? "本周额度（共用）" : "重置日程")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
                     ForEach(store.current.windows) { window in
                         ResetScheduleRow(window: window)
                     }
                 }
+            }
+
+            if store.selected == .grok {
+                Text("生图 / 视频 / 聊天 / Build 共用 SuperGrok 本周额度，不是独立配额。下面是同一池的产品拆分。")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Picker("服务", selection: $store.selected) {

@@ -64,11 +64,20 @@ enum KimiDisplayMode: String, CaseIterable, Identifiable, Codable {
 
 /// Raw used% values so the ring can switch without refetching.
 struct QuotaMetrics: Equatable, Sendable {
-    var cursorModelsUsed: Double?
-    var otherModelsUsed: Double?
-    var kimiMembershipUsed: Double?
+    var cursorModelsUsed: Double? = nil
+    var otherModelsUsed: Double? = nil
+    var kimiMembershipUsed: Double? = nil
     /// Most constrained Code window used% (max of 5h / 7d).
-    var kimiCodeUsed: Double?
+    var kimiCodeUsed: Double? = nil
+    /// SuperGrok shared weekly pool used%.
+    var grokWeeklyUsed: Double? = nil
+    /// Share of the same weekly pool consumed by each product (not independent caps).
+    var grokBuildUsed: Double? = nil
+    var grokImagineUsed: Double? = nil
+    var grokChatUsed: Double? = nil
+    var grokVoiceUsed: Double? = nil
+    var grokApiUsed: Double? = nil
+    var grokBotUsed: Double? = nil
 }
 
 enum QuotaWindowKind: String, Equatable, Sendable, CaseIterable {

@@ -34,6 +34,7 @@ enum QuotaProviderID: String, CaseIterable, Identifiable, Codable {
 
 /// Which Cursor Spending pool drives the menu-bar ring.
 enum CursorDisplayMode: String, CaseIterable, Identifiable, Codable {
+    case included
     case cursorModels
     case otherModels
 
@@ -41,6 +42,7 @@ enum CursorDisplayMode: String, CaseIterable, Identifiable, Codable {
 
     var title: String {
         switch self {
+        case .included: return "总体"
         case .cursorModels: return "Cursor Models"
         case .otherModels: return "Other Models"
         }
@@ -64,8 +66,12 @@ enum KimiDisplayMode: String, CaseIterable, Identifiable, Codable {
 
 /// Raw used% values so the ring can switch without refetching.
 struct QuotaMetrics: Equatable, Sendable {
+    /// includedSpend / limit — Spending 页主进度条。
+    var cursorIncludedUsed: Double? = nil
     var cursorModelsUsed: Double? = nil
     var otherModelsUsed: Double? = nil
+    var cursorSpendDollars: Double? = nil
+    var cursorLimitDollars: Double? = nil
     var kimiMembershipUsed: Double? = nil
     /// Most constrained Code window used% (max of 5h / 7d).
     var kimiCodeUsed: Double? = nil
@@ -173,10 +179,14 @@ struct QuotaSnapshot: Equatable, Sendable {
         case .cursor:
             let used: Double?
             switch cursorMode {
+            case .included:
+                used = metrics?.cursorIncludedUsed
+                    ?? metrics?.cursorModelsUsed
+                    ?? metrics?.otherModelsUsed
             case .cursorModels:
-                used = metrics?.cursorModelsUsed ?? metrics?.otherModelsUsed
+                used = metrics?.cursorModelsUsed ?? metrics?.cursorIncludedUsed ?? metrics?.otherModelsUsed
             case .otherModels:
-                used = metrics?.otherModelsUsed ?? metrics?.cursorModelsUsed
+                used = metrics?.otherModelsUsed ?? metrics?.cursorIncludedUsed ?? metrics?.cursorModelsUsed
             }
             if let used {
                 snap.remainingPercent = max(0, min(100, 100 - used))
@@ -216,20 +226,39 @@ struct QuotaSnapshot: Equatable, Sendable {
     ) -> String {
         guard let metrics else { return fallback }
         var parts: [String] = []
+        if let spend = metrics.cursorSpendDollars, let limit = metrics.cursorLimitDollars, limit > 0 {
+            parts.append(String(format: "$%.2f / $%.0f", spend, limit))
+        }
         switch mode {
+        case .included:
+            if let u = metrics.cursorIncludedUsed {
+                parts.append(String(format: "总体 %.0f%% used", u))
+            }
+            if let u = metrics.cursorModelsUsed {
+                parts.append(String(format: "Cursor Models %.0f%%", u))
+            }
+            if let u = metrics.otherModelsUsed {
+                parts.append(String(format: "Other %.0f%%", u))
+            }
         case .cursorModels:
             if let u = metrics.cursorModelsUsed {
                 parts.append(String(format: "Cursor Models %.0f%% used", u))
             }
+            if let u = metrics.cursorIncludedUsed {
+                parts.append(String(format: "总体 %.0f%%", u))
+            }
             if let u = metrics.otherModelsUsed {
-                parts.append(String(format: "Other %.0f%% used", u))
+                parts.append(String(format: "Other %.0f%%", u))
             }
         case .otherModels:
             if let u = metrics.otherModelsUsed {
                 parts.append(String(format: "Other Models %.0f%% used", u))
             }
+            if let u = metrics.cursorIncludedUsed {
+                parts.append(String(format: "总体 %.0f%%", u))
+            }
             if let u = metrics.cursorModelsUsed {
-                parts.append(String(format: "Cursor Models %.0f%% used", u))
+                parts.append(String(format: "Cursor Models %.0f%%", u))
             }
         }
         return parts.isEmpty ? fallback : parts.joined(separator: " · ")

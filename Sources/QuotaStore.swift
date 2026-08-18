@@ -10,7 +10,7 @@ final class QuotaStore: ObservableObject {
         }
     }
 
-    /// Cursor ring: Cursor Models vs Other Models.
+    /// Cursor ring: included spend vs Auto / API pools.
     @Published var cursorDisplayMode: CursorDisplayMode {
         didSet {
             UserDefaults.standard.set(cursorDisplayMode.rawValue, forKey: Self.cursorModeKey)
@@ -32,6 +32,7 @@ final class QuotaStore: ObservableObject {
     private var timer: Timer?
     private static let selectionKey = "aiQuota.selectedProvider"
     private static let cursorModeKey = "aiQuota.cursorDisplayMode"
+    private static let cursorModeMigratedKey = "aiQuota.cursorDisplayMode.migratedIncluded"
     private static let kimiModeKey = "aiQuota.kimiDisplayMode"
     private static let refreshSeconds: TimeInterval = 180
 
@@ -43,11 +44,22 @@ final class QuotaStore: ObservableObject {
             selected = .codex
         }
 
-        if let raw = UserDefaults.standard.string(forKey: Self.cursorModeKey),
-           let mode = CursorDisplayMode(rawValue: raw) {
+        if !UserDefaults.standard.bool(forKey: Self.cursorModeMigratedKey) {
+            UserDefaults.standard.set(true, forKey: Self.cursorModeMigratedKey)
+            let raw = UserDefaults.standard.string(forKey: Self.cursorModeKey)
+            if raw == nil || raw == CursorDisplayMode.cursorModels.rawValue {
+                cursorDisplayMode = .included
+                UserDefaults.standard.set(CursorDisplayMode.included.rawValue, forKey: Self.cursorModeKey)
+            } else if let raw, let mode = CursorDisplayMode(rawValue: raw) {
+                cursorDisplayMode = mode
+            } else {
+                cursorDisplayMode = .included
+            }
+        } else if let raw = UserDefaults.standard.string(forKey: Self.cursorModeKey),
+                  let mode = CursorDisplayMode(rawValue: raw) {
             cursorDisplayMode = mode
         } else {
-            cursorDisplayMode = .cursorModels
+            cursorDisplayMode = .included
         }
 
         if let raw = UserDefaults.standard.string(forKey: Self.kimiModeKey),

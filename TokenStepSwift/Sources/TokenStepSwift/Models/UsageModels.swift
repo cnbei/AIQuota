@@ -91,7 +91,7 @@ struct UsageTotals: Codable {
     }
 }
 
-struct DailyUsage: Codable, Identifiable {
+struct DailyUsage: Codable, Identifiable, Equatable {
     var id: String { date }
     var date: String
     var tools: [String: Int]

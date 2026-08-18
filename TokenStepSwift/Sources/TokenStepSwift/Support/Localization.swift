@@ -697,6 +697,13 @@ enum TokenStepLocalization {
             "git 操作失败：%@": "Git operation failed: %@",
             "同步数据序列化失败": "Failed to encode the sync data.",
             "检测到冲突，已放弃这次推送，下次会重试": "Detected a conflict; this push was skipped and will retry next time.",
+            "全部设备": "All devices",
+            "%@（本机）": "%@ (This Mac)",
+            "按设备筛选": "Filter by device",
+            "柱越高，用量越多；颜色代表设备": "Taller bars mean more usage; colors are devices",
+            "按设备": "By Device",
+            "各台电脑累计用量": "Lifetime usage by computer",
+            "历史页柱状图按设备分色，可筛选单台电脑看用量。各台电脑会把完整历史天数写入同步仓库。": "History bars are colored by device, and you can filter to one computer. Each Mac uploads its full history window to the sync repo.",
         ],
         .zhHant: [
             "简体中文": "簡體中文",
@@ -1285,7 +1292,14 @@ enum TokenStepLocalization {
             "git 操作超时，请检查网络后重试": "git 操作逾時，請檢查網路後重試",
             "git 操作失败：%@": "git 操作失敗：%@",
             "同步数据序列化失败": "同步資料序列化失敗",
-            "检测到冲突，已放弃这次推送，下次会重试": "偵測到衝突，已放棄這次推送，下次會重試"
+            "检测到冲突，已放弃这次推送，下次会重试": "偵測到衝突，已放棄這次推送，下次會重試",
+            "全部设备": "全部裝置",
+            "%@（本机）": "%@（本機）",
+            "按设备筛选": "依裝置篩選",
+            "柱越高，用量越多；颜色代表设备": "柱越高，用量越多；顏色代表裝置",
+            "按设备": "依裝置",
+            "各台电脑累计用量": "各台電腦累計用量",
+            "历史页柱状图按设备分色，可筛选单台电脑看用量。各台电脑会把完整历史天数写入同步仓库。": "歷史頁柱狀圖依裝置分色，可篩選單台電腦看用量。各台電腦會把完整歷史天數寫入同步倉庫。"
         ]
     ]
 }

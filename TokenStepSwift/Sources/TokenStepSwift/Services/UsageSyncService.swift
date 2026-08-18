@@ -19,37 +19,38 @@ enum UsageSyncService {
     struct MachineUsageFile: Codable {
         var machineId: String
         var machineName: String
+        var fileSlug: String?
         var updatedAt: String
         var daily: [DailyUsage]
 
         enum CodingKeys: String, CodingKey {
             case machineId = "machine_id"
             case machineName = "machine_name"
+            case fileSlug = "file_slug"
             case updatedAt = "updated_at"
             case daily
         }
     }
 
-    private struct OthersDailyCache: Codable {
+    private struct OthersMachinesCache: Codable {
         var fetchedAt: Date
-        var daily: [DailyUsage]
+        var machines: [MachineUsageFile]
 
         enum CodingKeys: String, CodingKey {
             case fetchedAt = "fetched_at"
-            case daily
+            case machines
         }
     }
 
     /// Syncs this machine's daily usage to the shared git repo and returns the
-    /// merged daily usage contributed by every *other* machine (never includes
-    /// this machine's own data, so callers can add it on top of their local ledger
-    /// without double counting).
+    /// usage contributed by every *other* machine (never includes this machine's
+    /// own file, so callers can overlay it without double counting).
     @discardableResult
     static func sync(
         remoteURLString: String,
         localSnapshot: UsageSnapshot,
         historyDays: Int
-    ) throws -> [DailyUsage] {
+    ) throws -> [MachineUsageFile] {
         let remote = remoteURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !remote.isEmpty else { throw UsageSyncError.emptyRemoteURL }
 
@@ -65,18 +66,27 @@ enum UsageSyncService {
         )
         try commitAndPushIfNeeded(repoRoot: repoRoot, branch: branch, machineName: identity.name)
 
-        let others = readOthersDaily(repoRoot: repoRoot, excludingFileSlug: identity.fileSlug)
+        let others = readOthersMachines(repoRoot: repoRoot, excludingFileSlug: identity.fileSlug)
         writeCache(others)
         return others
     }
 
-    static func loadCachedOthersDaily() -> [DailyUsage] {
-        guard let data = try? Data(contentsOf: AppPaths.syncOthersDailyCacheJSON),
-              let cache = try? JSONDecoder().decode(OthersDailyCache.self, from: data)
-        else {
+    static func loadCachedOthersMachines() -> [MachineUsageFile] {
+        guard let data = try? Data(contentsOf: AppPaths.syncOthersMachinesCacheJSON) else {
             return []
         }
-        return cache.daily
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let cache = try? decoder.decode(OthersMachinesCache.self, from: data) {
+            return cache.machines
+        }
+        return []
+    }
+
+    static func loadCachedOthersDaily() -> [DailyUsage] {
+        HistoryDevicePresentation.mergedDaily(
+            from: loadCachedOthersMachines().map { SyncedMachineLedger(remote: $0) }
+        )
     }
 
     // MARK: - Machine identity
@@ -186,6 +196,7 @@ enum UsageSyncService {
         let file = MachineUsageFile(
             machineId: identity.id,
             machineName: identity.name,
+            fileSlug: identity.fileSlug,
             updatedAt: isoFormatter.string(from: now),
             daily: daily
         )
@@ -263,7 +274,7 @@ enum UsageSyncService {
 
     // MARK: - Reading other machines
 
-    private static func readOthersDaily(repoRoot: URL, excludingFileSlug fileSlug: String) -> [DailyUsage] {
+    private static func readOthersMachines(repoRoot: URL, excludingFileSlug fileSlug: String) -> [MachineUsageFile] {
         let machinesDir = repoRoot.appendingPathComponent("machines", isDirectory: true)
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: machinesDir,
@@ -273,41 +284,31 @@ enum UsageSyncService {
         }
         let excludedName = "\(fileSlug).json"
         let decoder = JSONDecoder()
-        var merged: [String: DailyUsage] = [:]
+        var result: [MachineUsageFile] = []
         for fileURL in files {
             guard fileURL.pathExtension == "json", fileURL.lastPathComponent != excludedName else { continue }
             guard let data = try? Data(contentsOf: fileURL),
-                  let machineFile = try? decoder.decode(MachineUsageFile.self, from: data)
+                  var machineFile = try? decoder.decode(MachineUsageFile.self, from: data)
             else { continue }
-            for day in machineFile.daily {
-                merged[day.date] = mergedDay(merged[day.date], day)
+            if machineFile.fileSlug == nil || machineFile.fileSlug?.isEmpty == true {
+                machineFile.fileSlug = fileURL.deletingPathExtension().lastPathComponent
             }
+            result.append(machineFile)
         }
-        return merged.values.sorted { $0.date < $1.date }
+        return result.sorted { $0.machineName.localizedCaseInsensitiveCompare($1.machineName) == .orderedAscending }
     }
 
-    private static func mergedDay(_ existing: DailyUsage?, _ incoming: DailyUsage) -> DailyUsage {
-        guard var result = existing else { return incoming }
-        result.totalTokens += incoming.totalTokens
-        result.cost += incoming.cost
-        for (tool, tokens) in incoming.tools {
-            result.tools[tool, default: 0] += tokens
-        }
-        for (model, tokens) in incoming.models {
-            result.models[model, default: 0] += tokens
-        }
-        return result
-    }
-
-    private static func writeCache(_ daily: [DailyUsage], now: Date = Date()) {
-        let cache = OthersDailyCache(fetchedAt: now, daily: daily)
+    private static func writeCache(_ machines: [MachineUsageFile], now: Date = Date()) {
+        let cache = OthersMachinesCache(fetchedAt: now, machines: machines)
         do {
             try FileManager.default.createDirectory(
-                at: AppPaths.syncOthersDailyCacheJSON.deletingLastPathComponent(),
+                at: AppPaths.syncOthersMachinesCacheJSON.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            let data = try JSONEncoder().encode(cache)
-            try data.write(to: AppPaths.syncOthersDailyCacheJSON, options: .atomic)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(cache)
+            try data.write(to: AppPaths.syncOthersMachinesCacheJSON, options: .atomic)
         } catch {
             // Cache is best-effort; a stale/missing cache just delays "others" data showing up.
         }

@@ -116,6 +116,10 @@ struct PrivacyView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.tokenMuted)
                         .fixedSize(horizontal: false, vertical: true)
+                    Text(L("历史页柱状图按设备分色，可筛选单台电脑看用量。各台电脑会把完整历史天数写入同步仓库。"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.tokenMuted)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     SettingsToggleRow(
                         title: L("开启跨机器同步"),

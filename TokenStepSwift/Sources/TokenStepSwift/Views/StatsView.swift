@@ -6,18 +6,36 @@ struct StatsView: View {
     var body: some View {
         VStack(spacing: 22) {
             HStack(spacing: 18) {
-                StatHeroMetric(label: L("累计 Token 消耗"), value: TokenStepFormat.tokens(appState.snapshot.totals.tokens), symbol: "figure.walk")
-                StatHeroMetric(label: L("消耗金额"), value: TokenStepFormat.money(appState.snapshot.totals.cost), symbol: "dollarsign.circle")
-                StatHeroMetric(label: L("活跃天数"), value: localizedDays(appState.snapshot.totals.activeDays), symbol: "flame")
+                StatHeroMetric(label: L("累计 Token 消耗"), value: TokenStepFormat.tokens(appState.historyTotals.tokens), symbol: "figure.walk")
+                StatHeroMetric(label: L("消耗金额"), value: TokenStepFormat.money(appState.historyTotals.cost), symbol: "dollarsign.circle")
+                StatHeroMetric(label: L("活跃天数"), value: localizedDays(appState.historyTotals.activeDays), symbol: "flame")
             }
 
             recentActivityCard
 
+            if appState.showsHistoryDeviceChart, appState.historyDeviceFilter == .all, appState.historyDeviceStats.count > 1 {
+                usageList(
+                    title: L("按设备"),
+                    subtitle: L("各台电脑累计用量"),
+                    rows: appState.historyDeviceStats.map { stat in
+                        let title = appState.historyDevices.first(where: { $0.machineId == stat.machineId }).map {
+                            HistoryDevicePresentation.displayTitle(for: $0, among: appState.historyDevices)
+                        } ?? stat.machineName
+                        return UsageStatRow(
+                            name: title,
+                            value: stat.tokens,
+                            percent: stat.percent,
+                            color: tokenDeviceColor(machineId: stat.machineId, isLocal: stat.isLocal)
+                        )
+                    }
+                )
+            }
+
             HStack(alignment: .top, spacing: 22) {
-                usageList(title: L("按客户端"), subtitle: L("累计总量分布"), rows: appState.snapshot.tools.map {
+                usageList(title: L("按客户端"), subtitle: L("累计总量分布"), rows: appState.historyToolUsages.map {
                     UsageStatRow(name: $0.tool, value: $0.tokens, percent: $0.percentValue, color: $0.displayColor)
                 })
-                usageList(title: L("按模型"), subtitle: "Top \(min(appState.snapshot.models.count, 10)) / \(appState.snapshot.models.count)", rows: appState.snapshot.models.prefix(10).map {
+                usageList(title: L("按模型"), subtitle: "Top \(min(appState.historyModelUsages.count, 10)) / \(appState.historyModelUsages.count)", rows: appState.historyModelUsages.prefix(10).map {
                     UsageStatRow(name: $0.model, value: $0.tokens, percent: $0.percentValue, color: $0.displayColor)
                 })
             }
@@ -32,13 +50,22 @@ struct StatsView: View {
                         Text(L("最近 30 天"))
                             .font(.title3.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
-                        Text(L("柱越高，用量越多；颜色代表客户端"))
+                        Text(appState.showsHistoryDeviceChart
+                             ? L("柱越高，用量越多；颜色代表设备")
+                             : L("柱越高，用量越多；颜色代表客户端"))
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(Color.tokenMuted)
                     }
                     Spacer()
-                    TokenToolLegend(tools: recentTools, showsGoalLine: true)
-                    Text(LFormat("今天 %@", TokenStepFormat.tokens(appState.today.totalTokens, compact: true)))
+                    if appState.showsHistoryDeviceChart {
+                        TokenDeviceLegend(devices: HistoryDevicePresentation.selectedMachines(
+                            appState.historyDevices,
+                            filter: appState.historyDeviceFilter
+                        ))
+                    } else {
+                        TokenToolLegend(tools: recentTools, showsGoalLine: true)
+                    }
+                    Text(LFormat("今天 %@", TokenStepFormat.tokens(todayTokens, compact: true)))
                         .font(.callout.weight(.bold))
                         .foregroundStyle(Color.tokenGreenDark)
                         .padding(.horizontal, 12)
@@ -46,8 +73,16 @@ struct StatsView: View {
                         .background(Color.tokenMint.opacity(0.28), in: Capsule())
                 }
 
-                StackedActivityBarsView(rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
+                if appState.showsHistoryDeviceChart {
+                    DeviceStackedActivityBarsView(
+                        bars: appState.historyDeviceBars,
+                        goal: appState.settings.dailyGoalTokens
+                    )
                     .frame(height: 96)
+                } else {
+                    StackedActivityBarsView(rows: appState.snapshot.daily, goal: appState.settings.dailyGoalTokens)
+                        .frame(height: 96)
+                }
             }
         }
     }
@@ -90,7 +125,12 @@ struct StatsView: View {
     }
 
     private var recentTools: [String] {
-        uniqueToolNames(in: Array(appState.snapshot.daily.suffix(30)))
+        uniqueToolNames(in: Array(appState.historyDaily.suffix(30)))
+    }
+
+    private var todayTokens: Int {
+        let key = DateFormatter.tokenStepDay.string(from: Date())
+        return appState.historyDaily.last(where: { $0.date == key })?.totalTokens ?? 0
     }
 }
 

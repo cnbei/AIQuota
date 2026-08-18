@@ -413,6 +413,176 @@ struct StackedActivityBarsView: View {
     }
 }
 
+struct DeviceStackedActivityBarsView: View {
+    var bars: [DailyDeviceBar]
+    var goal: Int
+    @State private var hoveredDayID: DailyDeviceBar.ID?
+
+    var body: some View {
+        GeometryReader { proxy in
+            let days = bars
+            let gap: CGFloat = 5
+            let width = max(4, (proxy.size.width - gap * CGFloat(max(days.count - 1, 0))) / CGFloat(max(days.count, 1)))
+            let maxTokens = max(goal, days.map(\.totalTokens).max() ?? 1, 1)
+
+            ZStack(alignment: .topTrailing) {
+                ZStack(alignment: .bottomLeading) {
+                    Rectangle()
+                        .fill(.quaternary)
+                        .frame(height: 1)
+                        .offset(y: -proxy.size.height * CGFloat(goal) / CGFloat(maxTokens))
+
+                    HStack(alignment: .bottom, spacing: gap) {
+                        ForEach(days) { day in
+                            DeviceStackedActivityBar(
+                                day: day,
+                                goal: goal,
+                                maxTokens: maxTokens,
+                                width: width,
+                                height: proxy.size.height
+                            )
+                            .frame(width: width, height: proxy.size.height, alignment: .bottom)
+                            .contentShape(Rectangle())
+                            .onHover { isHovering in
+                                hoveredDayID = isHovering ? day.id : (hoveredDayID == day.id ? nil : hoveredDayID)
+                            }
+                            .help(deviceBarHoverText(day, goal: goal))
+                        }
+                    }
+                }
+
+                if let hoveredDay {
+                    DeviceActivityHoverBadge(day: hoveredDay, goal: goal)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+                }
+            }
+            .animation(.easeOut(duration: 0.12), value: hoveredDayID)
+        }
+    }
+
+    private var hoveredDay: DailyDeviceBar? {
+        bars.first { $0.id == hoveredDayID }
+    }
+}
+
+private struct DeviceStackedActivityBar: View {
+    var day: DailyDeviceBar
+    var goal: Int
+    var maxTokens: Int
+    var width: CGFloat
+    var height: CGFloat
+
+    var body: some View {
+        let totalHeight = max(4, height * CGFloat(day.totalTokens) / CGFloat(max(maxTokens, 1)))
+
+        VStack(spacing: 0) {
+            if day.totalTokens > 0, day.slices.isEmpty {
+                RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous)
+                    .fill(contributionColor(tokens: day.totalTokens, goal: goal))
+                    .frame(width: width, height: totalHeight)
+            } else {
+                ForEach(Array(day.slices.reversed())) { slice in
+                    RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous)
+                        .fill(tokenDeviceColor(machineId: slice.machineId, isLocal: slice.isLocal))
+                        .frame(
+                            width: width,
+                            height: max(1, totalHeight * CGFloat(slice.tokens) / CGFloat(max(day.totalTokens, 1)))
+                        )
+                }
+            }
+        }
+        .frame(width: width, height: totalHeight, alignment: .bottom)
+        .background {
+            if day.totalTokens <= 0 {
+                RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous)
+                    .fill(Color.tokenTrack)
+                    .frame(width: width, height: 4)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous))
+    }
+}
+
+private struct DeviceActivityHoverBadge: View {
+    var day: DailyDeviceBar
+    var goal: Int
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            Text(day.date)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Color.tokenMuted)
+            HStack(spacing: 5) {
+                Text(TokenStepFormat.tokens(day.totalTokens))
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk)
+                    .monospacedDigit()
+                Text(lapText)
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(contributionColor(tokens: day.totalTokens, goal: goal))
+            }
+            if !deviceSummary.isEmpty {
+                Text(deviceSummary)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.tokenMuted)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.tokenSurface.opacity(0.96), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.black.opacity(0.06)))
+        .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+    }
+
+    private var lapText: String {
+        guard goal > 0, day.totalTokens > 0 else { return "0%" }
+        let progress = Double(day.totalTokens) / Double(goal) * 100
+        return TokenStepFormat.percent(progress)
+    }
+
+    private var deviceSummary: String {
+        day.slices
+            .sorted { $0.tokens > $1.tokens }
+            .prefix(3)
+            .map { "\($0.machineName) \(TokenStepFormat.tokens($0.tokens, compact: true))" }
+            .joined(separator: " · ")
+    }
+}
+
+private func deviceBarHoverText(_ day: DailyDeviceBar, goal: Int) -> String {
+    let progress = goal > 0 ? TokenStepFormat.percent(Double(day.totalTokens) / Double(goal) * 100) : "0%"
+    let devices = day.slices
+        .sorted { $0.tokens > $1.tokens }
+        .map { "\($0.machineName) \(TokenStepFormat.tokens($0.tokens, compact: true))" }
+        .joined(separator: " · ")
+    if devices.isEmpty {
+        return "\(day.date)\n\(TokenStepFormat.tokens(day.totalTokens)) · \(progress)"
+    }
+    return "\(day.date)\n\(TokenStepFormat.tokens(day.totalTokens)) · \(progress)\n\(devices)"
+}
+
+struct TokenDeviceLegend: View {
+    var devices: [SyncedMachineLedger]
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(devices) { device in
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(tokenDeviceColor(machineId: device.machineId, isLocal: device.isLocal))
+                        .frame(width: 8, height: 8)
+                    Text(HistoryDevicePresentation.displayTitle(for: device, among: devices))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.tokenMuted)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+}
+
 private struct StackedActivityBar: View {
     var day: DailyUsage
     var goal: Int
@@ -665,6 +835,21 @@ func contributionColor(tokens: Int, goal: Int) -> Color {
 
 func tokenToolColor(_ tool: String) -> Color {
     AgentSourceRegistry.color(for: tool)
+}
+
+func tokenDeviceColor(machineId: String, isLocal: Bool) -> Color {
+    if isLocal {
+        return Color.tokenGreen
+    }
+    let palette: [Color] = [
+        Color(red: 0.18, green: 0.45, blue: 0.82),
+        Color(red: 0.58, green: 0.35, blue: 0.86),
+        Color(red: 0.90, green: 0.55, blue: 0.18),
+        Color(red: 0.86, green: 0.28, blue: 0.40),
+        Color(red: 0.20, green: 0.62, blue: 0.62)
+    ]
+    let index = HistoryDevicePresentation.colorIndex(for: machineId, isLocal: false, paletteCount: palette.count)
+    return palette[max(0, index) % palette.count]
 }
 
 func orderedToolEntries(_ tools: [String: Int]) -> [(name: String, tokens: Int)] {

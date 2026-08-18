@@ -31,4 +31,5 @@ enum AppPaths {
     static let syncRepoRoot = appSupportRoot.appendingPathComponent("sync/aiquota-usage-sync", isDirectory: true)
     static let syncMachineIdentityJSON = appSupportRoot.appendingPathComponent("config/sync-machine-identity.json")
     static let syncOthersDailyCacheJSON = appSupportRoot.appendingPathComponent("cache/usage-sync-others-daily.json")
+    static let syncOthersMachinesCacheJSON = appSupportRoot.appendingPathComponent("cache/usage-sync-machines.json")
 }

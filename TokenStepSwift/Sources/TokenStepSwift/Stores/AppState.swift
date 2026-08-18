@@ -27,6 +27,7 @@ final class AppState: ObservableObject {
     @Published private(set) var isSyncingUsage = false
     @Published private(set) var lastUsageSyncAt: Date?
     @Published var usageSyncError: String?
+    @Published var historyDeviceFilter: HistoryDeviceFilter = .all
     @Published var lastError: String?
     @Published var isQuotaPinned = false
     @Published var kimiAuthHint: String?
@@ -43,7 +44,8 @@ final class AppState: ObservableObject {
     private var lastUsageObservedAt: Date?
     private var lastUsageSyncAttemptAt: Date?
     private var ledgerSnapshot: UsageSnapshot = .empty
-    private var othersDaily: [DailyUsage] = UsageSyncService.loadCachedOthersDaily()
+    private var localHistoryDaily: [DailyUsage] = []
+    private var remoteMachines: [UsageSyncService.MachineUsageFile] = UsageSyncService.loadCachedOthersMachines()
     private var isRefreshingCursorUsage = false
 
     init() {
@@ -105,7 +107,63 @@ final class AppState: ObservableObject {
     }
 
     var visibleHistoryRows: [DailyUsage] {
-        Array(snapshot.daily.reversed())
+        Array(historyDaily.reversed())
+    }
+
+    var historyDevices: [SyncedMachineLedger] {
+        let identity = UsageSyncService.loadOrCreateMachineIdentity()
+        let local = SyncedMachineLedger(
+            machineId: identity.id,
+            machineName: identity.name,
+            fileSlug: identity.fileSlug,
+            isLocal: true,
+            daily: localHistoryDaily
+        )
+        let remotes = remoteMachines.map { SyncedMachineLedger(remote: $0) }
+        return [local] + remotes
+    }
+
+    var showsHistoryDeviceChart: Bool {
+        settings.usageSyncEnabled
+    }
+
+    var historyDaily: [DailyUsage] {
+        guard showsHistoryDeviceChart else { return snapshot.daily }
+        return HistoryDevicePresentation.filteredDaily(machines: historyDevices, filter: historyDeviceFilter)
+    }
+
+    var historyTotals: UsageTotals {
+        guard showsHistoryDeviceChart else { return snapshot.totals }
+        return HistoryDevicePresentation.totals(from: historyDaily)
+    }
+
+    var historyToolUsages: [ToolUsage] {
+        guard showsHistoryDeviceChart else { return snapshot.tools }
+        return HistoryDevicePresentation.toolUsages(from: historyDaily)
+    }
+
+    var historyModelUsages: [ModelUsage] {
+        guard showsHistoryDeviceChart else { return snapshot.models }
+        return HistoryDevicePresentation.modelUsages(from: historyDaily)
+    }
+
+    var historyDeviceStats: [DeviceUsageStat] {
+        HistoryDevicePresentation.deviceStats(from: HistoryDevicePresentation.selectedMachines(
+            historyDevices,
+            filter: historyDeviceFilter
+        ))
+    }
+
+    var historyDeviceBars: [DailyDeviceBar] {
+        HistoryDevicePresentation.deviceBars(
+            machines: historyDevices,
+            filter: historyDeviceFilter
+        )
+    }
+
+    func setHistoryDeviceFilter(_ filter: HistoryDeviceFilter) {
+        historyDeviceFilter = filter
+        sanitizeHistoryDeviceFilter()
     }
 
     var shouldShowTokenIsland: Bool {
@@ -918,7 +976,7 @@ final class AppState: ObservableObject {
 
     func refreshUsageSync(force: Bool = false, now: Date = Date()) {
         guard settings.usageSyncEnabled else {
-            othersDaily = []
+            remoteMachines = []
             usageSyncError = nil
             applyOverlays()
             return
@@ -946,7 +1004,7 @@ final class AppState: ObservableObject {
                         historyDays: historyDays
                     )
                 }.value
-                othersDaily = others
+                remoteMachines = others
                 lastUsageSyncAt = Date()
                 usageSyncError = nil
             } catch {
@@ -963,9 +1021,10 @@ final class AppState: ObservableObject {
         if enabled {
             refreshUsageSync(force: true)
         } else {
-            othersDaily = []
+            remoteMachines = []
             usageSyncError = nil
             lastUsageSyncAt = nil
+            historyDeviceFilter = .all
             applyOverlays()
         }
     }
@@ -981,8 +1040,21 @@ final class AppState: ObservableObject {
 
     private func applyOverlays() {
         applyCursorOfficialUsageOverlay()
-        guard settings.usageSyncEnabled, !othersDaily.isEmpty else { return }
-        snapshot = Self.mergingOthersDaily(othersDaily, into: snapshot)
+        localHistoryDaily = snapshot.daily
+        sanitizeHistoryDeviceFilter()
+        guard settings.usageSyncEnabled else { return }
+        let remoteDaily = HistoryDevicePresentation.mergedDaily(
+            from: remoteMachines.map { SyncedMachineLedger(remote: $0) }
+        )
+        guard !remoteDaily.isEmpty else { return }
+        snapshot = Self.mergingOthersDaily(remoteDaily, into: snapshot)
+    }
+
+    private func sanitizeHistoryDeviceFilter() {
+        guard case let .machine(id) = historyDeviceFilter else { return }
+        if !historyDevices.contains(where: { $0.machineId == id }) {
+            historyDeviceFilter = .all
+        }
     }
 
     private func applyCursorOfficialUsageOverlay() {

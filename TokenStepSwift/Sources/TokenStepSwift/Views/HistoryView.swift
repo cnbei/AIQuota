@@ -18,7 +18,7 @@ struct HistoryView: View {
                                 .foregroundStyle(Color.tokenMuted)
                         }
                         Spacer()
-                        Text(LFormat("%d 个活跃日", appState.snapshot.totals.activeDays))
+                        Text(LFormat("%d 个活跃日", appState.historyTotals.activeDays))
                             .font(.callout.weight(.bold))
                             .foregroundStyle(Color.tokenGreenDark)
                             .padding(.horizontal, 12)
@@ -26,8 +26,12 @@ struct HistoryView: View {
                             .background(Color.tokenMint.opacity(0.28), in: Capsule())
                     }
 
+                    if appState.showsHistoryDeviceChart {
+                        HistoryDeviceFilterBar()
+                    }
+
                     ContributionWallView(
-                        rows: Array(appState.snapshot.daily.suffix(238)),
+                        rows: Array(appState.historyDaily.suffix(238)),
                         goal: appState.settings.dailyGoalTokens
                     )
                 }
@@ -90,6 +94,52 @@ struct HistoryView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color.tokenTrack.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct HistoryDeviceFilterBar: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L("按设备筛选"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.tokenMuted)
+            HStack(spacing: 8) {
+                filterChip(title: L("全部设备"), selected: appState.historyDeviceFilter == .all, color: Color.tokenInk) {
+                    appState.setHistoryDeviceFilter(.all)
+                }
+                ForEach(appState.historyDevices) { device in
+                    filterChip(
+                        title: HistoryDevicePresentation.displayTitle(for: device, among: appState.historyDevices),
+                        selected: appState.historyDeviceFilter == .machine(device.machineId),
+                        color: tokenDeviceColor(machineId: device.machineId, isLocal: device.isLocal)
+                    ) {
+                        appState.setHistoryDeviceFilter(.machine(device.machineId))
+                    }
+                }
+            }
+        }
+    }
+
+    private func filterChip(title: String, selected: Bool, color: Color = Color.tokenGreen, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(selected ? Color.white : Color.tokenInk)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(selected ? color : Color.tokenSurface, in: Capsule())
+            .overlay(Capsule().stroke(Color.black.opacity(selected ? 0 : 0.10)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 

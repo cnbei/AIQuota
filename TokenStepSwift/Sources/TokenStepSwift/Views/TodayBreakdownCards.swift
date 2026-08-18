@@ -24,7 +24,7 @@ struct TodayBreakdownCard: View {
                 if rows.isEmpty {
                     Text(L("等待下一次同步"))
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                         .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
                 } else {
                     VStack(spacing: 12) {
@@ -85,7 +85,7 @@ private struct TodayBreakdownRowView: View {
 
             Text("\(TokenStepFormat.tokens(row.tokens, compact: true)) · \(TokenStepFormat.percent(row.percent))")
                 .font(.callout.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
                 .lineLimit(1)
                 .monospacedDigit()
                 .frame(width: 126, alignment: .trailing)

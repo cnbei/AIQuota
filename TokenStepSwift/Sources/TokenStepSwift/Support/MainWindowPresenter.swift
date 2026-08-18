@@ -43,7 +43,7 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
 
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
-        window.title = "TokenStep"
+        window.title = AppBrand.displayName
         window.identifier = NSUserInterfaceItemIdentifier("main")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarSeparatorStyle = .none

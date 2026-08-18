@@ -17,7 +17,7 @@ struct TodayHeroCard: View {
                             .lineLimit(1)
                         Text(LFormat("/ %@ 每圈", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.tokenMuted)
                     }
                     .frame(width: 100)
                 }
@@ -29,7 +29,7 @@ struct TodayHeroCard: View {
                         .foregroundStyle(Color.tokenInk)
                     Text(heroSubtitle)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
 
                     HStack(spacing: 8) {
                         TodayMetricChip(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
@@ -66,7 +66,7 @@ struct TodayAgentIntensityCard: View {
                         .foregroundStyle(Color.tokenInk)
                     Text(L("本版补全：请求数 / 工具调用 / 输出"))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                 }
 
                 HStack(spacing: 8) {
@@ -112,7 +112,7 @@ struct TodayHourlyCard: View {
                         .foregroundStyle(Color.tokenInk)
                     Text(L("来自 hourlyBuckets · 活跃小时由此重算"))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                 }
 
                 HStack(alignment: .bottom, spacing: 3) {
@@ -144,12 +144,12 @@ struct TodayHourlyCard: View {
                     Text("23")
                 }
                 .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
 
                 if work.unbucketedTokens > 0 {
                     Text(LFormat("无时间戳 %@ 已单列，不摊进任何小时。", TokenStepFormat.tokens(work.unbucketedTokens, compact: true)))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                 }
             }
         }
@@ -174,13 +174,13 @@ struct TodaySourcesCard: View {
                         .foregroundStyle(Color.tokenInk)
                     Text(L("本地账本 + Cursor 官方用量 · 计入圆环"))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                 }
 
                 if rows.isEmpty {
                     Text(L("等待下一次同步"))
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
                 } else {
                     VStack(spacing: 8) {
@@ -259,7 +259,7 @@ private struct TodayMetricChip: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
             Text(value)
                 .font(.system(size: 15, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.tokenInk)
@@ -282,7 +282,7 @@ private struct TodayBigStat: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
             Text(value)
                 .font(.system(size: 24, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.tokenInk)

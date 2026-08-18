@@ -4,7 +4,7 @@ struct SettingsDisplayCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("显示入口"), symbol: "macwindow.badge.plus", height: 268) {
+        SettingsCard(title: L("显示入口"), symbol: "macwindow.badge.plus", height: 360) {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(L("显示位置"))
@@ -33,8 +33,32 @@ struct SettingsDisplayCard: View {
                     value: appState.tokenIslandStatusDetail,
                     tint: appState.shouldShowTokenIsland ? .tokenGreen : .gray
                 )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(L("菜单栏圆环"))
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(Color.tokenInk)
+                    Text(L("默认显示所选服务的额度圆环，和浮层里选中的服务、档位一致。"))
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Picker(L("菜单栏圆环"), selection: menuBarRingBinding) {
+                        ForEach(MenuBarRingMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
             }
         }
+    }
+
+    private var menuBarRingBinding: Binding<MenuBarRingMode> {
+        Binding(
+            get: { appState.settings.menuBarRingMode },
+            set: { appState.setMenuBarRingMode($0) }
+        )
     }
 }
 

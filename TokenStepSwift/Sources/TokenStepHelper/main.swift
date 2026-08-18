@@ -43,7 +43,7 @@ private struct UpdateInstaller {
     var requireVerified = true
     var logPath = ""
     var helperPath = CommandLine.arguments.first ?? ""
-    var destinationPath = "/Applications/TokenStep.app"
+    var destinationPath = "/Applications/AIQuota.app"
     var skipRelaunch = false
     var skipStop = false
 
@@ -217,10 +217,10 @@ private struct UpdateInstaller {
             throw HelperError.message("Could not enumerate DMG.")
         }
 
-        for case let url as URL in enumerator where url.lastPathComponent == "TokenStep.app" {
+        for case let url as URL in enumerator where url.lastPathComponent == "AIQuota.app" {
             return url
         }
-        throw HelperError.message("TokenStep.app not found in DMG.")
+        throw HelperError.message("AIQuota.app not found in DMG.")
     }
 
     private func stopOldTokenStep(logger: inout HelperLogger) {
@@ -264,6 +264,7 @@ private struct UpdateInstaller {
 
         for line in text.split(separator: "\n").map(String.init) {
             guard line.contains(" on /Volumes/TokenStep")
+                    || line.contains(" on /Volumes/AIQuota")
                     || line.contains("tokenstep-preflight-")
                     || line.contains("tokenstep-update.")
                     || line.contains("tokenstep-update-root.")
@@ -279,7 +280,7 @@ private struct UpdateInstaller {
     }
 
     private func notifyFailure() {
-        let script = "display notification \"请手动把 DMG 里的 TokenStep 拖到 Applications。\" with title \"TokenStep 自动更新失败\""
+        let script = "display notification \"请手动把 DMG 里的 AIQuota 拖到 Applications。\" with title \"AIQuota 自动更新失败\""
         _ = try? ProcessRunner.run("/usr/bin/osascript", ["-e", script])
     }
 }

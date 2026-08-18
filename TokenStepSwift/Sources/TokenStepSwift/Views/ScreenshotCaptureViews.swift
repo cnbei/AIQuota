@@ -22,7 +22,7 @@ struct DashboardScreenshotView: View {
     private var captureHeader: some View {
         HStack(spacing: 12) {
             TokenStepMark(size: 22)
-            Text("TokenStep")
+            Text(AppBrand.displayName)
                 .font(.system(size: 14, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.tokenInk)
             Spacer()

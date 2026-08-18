@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BUILDER="$ROOT_DIR/TokenUsageMenuApp/build_app.sh"
-APP_BUNDLE="$ROOT_DIR/TokenUsageMenuApp/dist/TokenStep.app"
+APP_BUNDLE="$ROOT_DIR/TokenUsageMenuApp/dist/AIQuota.app"
 
 pkill -f "TokenUsageMenu.py" 2>/dev/null || true
 pkill -x "TokenStep" 2>/dev/null || true

@@ -17,13 +17,13 @@ struct CursorCodeSignalCard: View {
 
                 Text(L("Cursor 本地没有 token 数，只有产出量。这里回答「AI 帮我写了多少」，不参与 Token 总量。"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let error = appState.cursorCodeSignalError, appState.cursorCodeSignal == nil {
                     Text(error)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                 } else if let signal = appState.cursorCodeSignal, !signal.isEmpty {
                     HStack(spacing: 18) {
                         TodaySignalStat(label: L("AI 代码块"), value: "\(signal.blockCount)")
@@ -43,7 +43,7 @@ struct CursorCodeSignalCard: View {
                 } else {
                     Text(L("今日暂无"))
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                 }
             }
         }
@@ -71,7 +71,7 @@ private struct TodaySignalStat: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
             Text(value)
                 .font(.system(size: 26, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.tokenInk)

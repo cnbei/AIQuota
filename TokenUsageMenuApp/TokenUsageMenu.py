@@ -58,7 +58,7 @@ USAGE_JSON = ROOT / "data" / "usage.json"
 SETTINGS_JSON = ROOT / "config" / "settings.json"
 COLLECTOR = ROOT / "token_usage_monitor.py"
 PYTHON = Path(sys.executable)
-APP_BUNDLE = ROOT / "TokenUsageMenuApp" / "dist" / "TokenStep.app"
+APP_BUNDLE = ROOT / "TokenUsageMenuApp" / "dist" / "AIQuota.app"
 LAUNCH_AGENT_LABEL = "com.huangshu.TokenStep.prototype.login"
 LAUNCH_AGENT = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
 
@@ -68,7 +68,7 @@ DEFAULT_SETTINGS = {
     "history_days": 180,
 }
 
-APP_TITLE = "TokenStep"
+APP_TITLE = "AIQuota"
 APP_SUBTITLE = "今日 AI 步数"
 PRIMARY = "#2da44e"
 PRIMARY_DARK = "#216e39"

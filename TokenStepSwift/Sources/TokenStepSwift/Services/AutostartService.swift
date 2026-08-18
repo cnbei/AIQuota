@@ -55,7 +55,7 @@ enum AutostartService {
         let domain = "gui/\(getuid())"
         if enabled {
             guard canEnableForCurrentBundle else {
-                throw TokenStepError.message(L("请先把 TokenStep 拖到 Applications 后再开启开机启动。"))
+                throw TokenStepError.message(L("请先把 AIQuota 拖到 Applications 后再开启开机启动。"))
             }
 
             try FileManager.default.createDirectory(

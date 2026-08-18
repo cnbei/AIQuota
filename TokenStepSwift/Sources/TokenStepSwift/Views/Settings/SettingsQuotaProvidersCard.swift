@@ -144,8 +144,14 @@ struct SettingsQuotaProviderBlock: View {
 
             HStack(spacing: 8) {
                 if provider == .kimi {
+                    compactButton(L("导入网页登录")) {
+                        appState.importKimiWebAuth()
+                    }
                     compactButton(L("打开 ~/.kimi")) {
                         appState.revealQuotaCredentialFolder(.kimi)
+                    }
+                    compactButton(L("打开控制台")) {
+                        appState.openQuotaDashboard(.kimi)
                     }
                 }
             }
@@ -173,7 +179,7 @@ struct SettingsQuotaProviderBlock: View {
     private var placeholder: String {
         switch provider {
         case .glm: return L("粘贴 Coding Plan API Key")
-        case .kimi: return L("粘贴 Kimi access_token")
+        case .kimi: return L("粘贴 kimi-auth 网页 Cookie")
         case .grok: return L("一般不用填，短码不要贴到这里")
         default: return ""
         }

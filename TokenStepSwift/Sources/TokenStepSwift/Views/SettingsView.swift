@@ -32,6 +32,7 @@ struct SettingsView: View {
             }
         }
         .id(appState.appearanceID)
+        .preferredColorScheme(.light)
     }
 
     private var windowBody: some View {
@@ -150,7 +151,7 @@ struct SettingsView: View {
     private var footer: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
-                Text(L("TokenStep · Local usage tracker"))
+                Text(L("AIQuota · Local usage tracker"))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
                 Text(LFormat("当前版本 %@", UpdateService.currentVersion))

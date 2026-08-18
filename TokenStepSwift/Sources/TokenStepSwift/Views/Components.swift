@@ -8,25 +8,54 @@ struct StatusBarLabelView: View {
     var theme: TokenStepTheme
     var language: TokenStepLanguage
     var warning: Bool = false
+    var showsQuotaRemaining: Bool = false
+    var quotaRemaining: Double = 0
+    var quotaHasError: Bool = false
+    var quotaTitle: String = ""
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(nsImage: StatusBarIconRenderer.progressRing(progress: lap.currentLapProgress, lap: lap.currentLap, refreshing: refreshing, warning: warning))
+            Image(nsImage: ringImage)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 22, height: 22)
-                .accessibilityLabel("\(lap.lapTitle) \(lap.lapPercentText)")
+                .frame(width: ringSize, height: ringSize)
+                .accessibilityLabel(showsQuotaRemaining ? quotaTitle : "\(lap.lapTitle) \(lap.lapPercentText)")
                 .id("\(theme.id)-\(language.resolved.id)")
 
-            Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(Color.primary)
+            if !showsQuotaRemaining {
+                Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.primary)
+            }
         }
         .padding(.horizontal, 2)
         .frame(height: 24)
         .id("\(theme.id)-\(language.resolved.id)")
     }
+
+    private var ringSize: CGFloat {
+        showsQuotaRemaining ? 18 : 22
+    }
+
+    private var ringImage: NSImage {
+        if showsQuotaRemaining {
+            return StatusBarIconRenderer.remainingQuotaRing(
+                remaining: quotaRemaining,
+                hasError: quotaHasError,
+                size: 18,
+                radius: 7.2,
+                lineWidth: 2.4
+            )
+        }
+        return StatusBarIconRenderer.progressRing(
+            progress: lap.currentLapProgress,
+            lap: lap.currentLap,
+            refreshing: refreshing,
+            warning: warning
+        )
+    }
+
 }
 
 struct TokenStepBackdrop: View {
@@ -175,7 +204,7 @@ struct UsageRecalibrationNotice: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(Color.tokenGreen)
                 .padding(.top, 1)
-            Text(L("TokenStep 已按真实增量重新校准历史 Token。数字可能变小，但历史记录没有丢失。"))
+            Text(L("AIQuota 已按真实增量重新校准历史 Token。数字可能变小，但历史记录没有丢失。"))
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(Color.tokenInk.opacity(0.82))
                 .fixedSize(horizontal: false, vertical: true)
@@ -223,7 +252,7 @@ struct MetricPill: View {
         HStack(spacing: 8) {
             Text(label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
             Text(value)
                 .font(.callout.weight(.bold))
                 .foregroundStyle(Color.tokenInk)
@@ -316,7 +345,7 @@ struct UsageProgressRow: View {
 
             Text(value)
                 .font(.callout.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
                 .lineLimit(1)
                 .frame(width: 132, alignment: .trailing)
         }
@@ -484,7 +513,7 @@ private struct ActivityHoverBadge: View {
         VStack(alignment: .trailing, spacing: 3) {
             Text(day.date)
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
             HStack(spacing: 5) {
                 Text(TokenStepFormat.tokens(day.totalTokens))
                     .font(.caption.weight(.heavy))
@@ -497,7 +526,7 @@ private struct ActivityHoverBadge: View {
             if !toolSummary.isEmpty {
                 Text(toolSummary)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
                     .lineLimit(1)
             }
         }
@@ -546,7 +575,7 @@ struct TokenToolLegend: View {
                         .frame(width: 8, height: 8)
                     Text(tool)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                         .lineLimit(1)
                 }
             }
@@ -554,11 +583,11 @@ struct TokenToolLegend: View {
             if showsGoalLine {
                 HStack(spacing: 5) {
                     Rectangle()
-                        .fill(.secondary.opacity(0.45))
+                        .fill(Color.tokenMuted.opacity(0.45))
                         .frame(width: 16, height: 1)
                     Text(L("每日目标"))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                 }
             }
         }
@@ -599,7 +628,7 @@ struct ContributionWallView: View {
                     VStack(spacing: 5) {
                         Text(showMonth ? monthLabel(firstDay) : " ")
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.tokenMuted)
                             .frame(width: 15, alignment: .leading)
                             .lineLimit(1)
                         ForEach(0..<7, id: \.self) { dayIndex in
@@ -628,7 +657,7 @@ struct ContributionWallView: View {
                 Spacer()
                 Text(L("少"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
                 ForEach([0, Int(Double(goal) * 0.25), Int(Double(goal) * 0.7), goal, goal * 2, goal * 3], id: \.self) { value in
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(contributionColor(tokens: value, goal: goal))
@@ -636,7 +665,7 @@ struct ContributionWallView: View {
                 }
                 Text(L("多"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
             }
         }
     }

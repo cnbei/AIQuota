@@ -36,6 +36,30 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertTrue(decoded.cursorCodeSignalEnabled)
         XCTAssertEqual(decoded.historyDays, 90)
         XCTAssertTrue(decoded.showCodexQuota)
+        XCTAssertEqual(decoded.cursorDisplayMode, .cursorModels)
+        XCTAssertEqual(decoded.kimiDisplayMode, .membership)
+        XCTAssertEqual(decoded.menuBarRingMode, .quotaRemaining)
+    }
+
+    func testRoundTripKeepsQuotaDisplayPreferences() throws {
+        var settings = TokenStepSettings.defaults
+        settings.selectedQuotaProvider = .kimi
+        settings.cursorDisplayMode = .otherModels
+        settings.kimiDisplayMode = .code
+        settings.menuBarRingMode = .quotaRemaining
+        let decoded = try JSONDecoder().decode(TokenStepSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.selectedQuotaProvider, .kimi)
+        XCTAssertEqual(decoded.cursorDisplayMode, .otherModels)
+        XCTAssertEqual(decoded.kimiDisplayMode, .code)
+        XCTAssertEqual(decoded.menuBarRingMode, .quotaRemaining)
+    }
+
+    func testLegacyCursorIncludedModeMigratesToCursorModels() throws {
+        let json = """
+        {"cursor_display_mode": "included"}
+        """.data(using: .utf8)!
+        let settings = try JSONDecoder().decode(TokenStepSettings.self, from: json)
+        XCTAssertEqual(settings.cursorDisplayMode, .cursorModels)
     }
 
     func testCursorFlagStaysInSyncWithProviderSet() {

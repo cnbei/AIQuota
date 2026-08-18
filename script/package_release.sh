@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="TokenStep"
+APP_NAME="AIQuota"
 PRODUCT_NAME="TokenStepSwift"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
 BUILT_APP_BUNDLE="$SWIFT_DIR/dist/$APP_NAME.app"
@@ -23,8 +23,8 @@ Notarization credentials, choose one:
   APPLE_ID="you@example.com" APPLE_TEAM_ID="TEAMID" APPLE_APP_PASSWORD="xxxx-xxxx-xxxx-xxxx"
 
 Outputs:
-  release/TokenStep-<version>.zip
-  release/TokenStep-<version>.dmg
+  release/AIQuota-<version>.zip
+  release/AIQuota-<version>.dmg
 USAGE
 }
 

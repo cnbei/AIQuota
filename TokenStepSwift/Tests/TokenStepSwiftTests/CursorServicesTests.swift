@@ -13,6 +13,84 @@ final class CursorServicesTests: XCTestCase {
         XCTAssertEqual(CursorQuotaService.userId(fromJWT: token), "user_123")
     }
 
+    func testJWTUserIdStripsAuth0Prefix() {
+        let payload = #"{"sub":"auth0|user_123"}"#
+        let encoded = Data(payload.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "="))
+        let token = "aaa.\(encoded).sig"
+        XCTAssertEqual(CursorQuotaService.userId(fromJWT: token), "user_123")
+    }
+
+    func testCursorWindowsParseIncludedSpendAsOverallPool() {
+        let payload: [String: Any] = [
+            "planUsage": [
+                "includedSpend": 240,
+                "limit": 2000,
+                "autoPercentUsed": 12,
+                "apiPercentUsed": 3
+            ],
+            "planName": "Pro"
+        ]
+        let windows = CursorQuotaService.windows(from: payload)
+        XCTAssertEqual(windows.count, 2)
+        XCTAssertEqual(windows[0].kind, .cursorModels)
+        XCTAssertEqual(windows[0].usedPercent, 12, accuracy: 0.01)
+        let metrics = CursorQuotaService.metrics(from: payload)
+        XCTAssertEqual(metrics?.cursorIncludedUsed ?? -1, 12, accuracy: 0.01)
+        XCTAssertEqual(metrics?.cursorSpendDollars ?? -1, 2.4, accuracy: 0.01)
+        XCTAssertEqual(metrics?.cursorLimitDollars ?? -1, 20, accuracy: 0.01)
+        XCTAssertEqual(CursorQuotaService.planName(from: payload), "Pro")
+    }
+
+    func testCursorSpendPoolIsIndependentOfModelPools() {
+        let payload: [String: Any] = [
+            "planUsage": [
+                "includedSpend": 4134,
+                "limit": 40000,
+                "autoPercentUsed": 2,
+                "apiPercentUsed": 0
+            ]
+        ]
+        let windows = CursorQuotaService.windows(from: payload)
+        XCTAssertEqual(windows.map(\.kind), [.cursorModels, .otherModels])
+        XCTAssertEqual(windows[0].usedPercent, 2, accuracy: 0.01)
+        XCTAssertEqual(windows[1].usedPercent, 0, accuracy: 0.01)
+        let metrics = CursorQuotaService.metrics(from: payload)
+        XCTAssertEqual(metrics?.cursorSpendDollars ?? -1, 41.34, accuracy: 0.01)
+        XCTAssertEqual(metrics?.cursorLimitDollars ?? -1, 400, accuracy: 0.01)
+        let quota = ProviderQuota(
+            provider: .cursor,
+            windows: windows,
+            status: .available,
+            metrics: metrics
+        )
+        XCTAssertEqual(
+            QuotaPresentation.remainingPercent(quota, cursorMode: .included, kimiMode: .membership),
+            98,
+            accuracy: 0.01
+        )
+        let detail = QuotaPresentation.detail(quota, cursorMode: .included, kimiMode: .membership)
+        XCTAssertTrue(detail.contains("$41.34"))
+        XCTAssertTrue(detail.contains("Other Models"))
+    }
+
+    func testCursorWindowsParseDashboardPlanUsage() {
+        let payload: [String: Any] = [
+            "planUsage": [
+                "autoPercentUsed": 12,
+                "apiPercentUsed": 3
+            ]
+        ]
+        let windows = CursorQuotaService.windows(from: payload)
+        XCTAssertEqual(windows.count, 2)
+        XCTAssertEqual(windows[0].kind, .cursorModels)
+        XCTAssertEqual(windows[0].usedPercent, 12, accuracy: 0.01)
+        XCTAssertEqual(windows[1].kind, .otherModels)
+        XCTAssertEqual(windows[1].usedPercent, 3, accuracy: 0.01)
+    }
+
     func testCursorWindowsParseTwoPoolsFromUsageSummary() {
         let payload: [String: Any] = [
             "billingCycleEnd": "2026-09-16T00:00:00.000Z",

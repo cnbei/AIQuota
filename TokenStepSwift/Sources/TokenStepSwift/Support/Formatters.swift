@@ -104,6 +104,7 @@ extension DateFormatter {
 
 extension Color {
     static let tokenInk = Color(red: 31 / 255, green: 41 / 255, blue: 55 / 255)
+    static let tokenMuted = Color(red: 82 / 255, green: 94 / 255, blue: 110 / 255)
     static var tokenCanvas: Color { TokenStepThemeRuntime.palette.canvas.color }
     static var tokenSurface: Color { TokenStepThemeRuntime.palette.surface.color }
     static var tokenGreen: Color { TokenStepThemeRuntime.palette.accent.color }

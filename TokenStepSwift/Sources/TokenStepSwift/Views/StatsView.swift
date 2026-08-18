@@ -34,7 +34,7 @@ struct StatsView: View {
                             .foregroundStyle(Color.tokenInk)
                         Text(L("柱越高，用量越多；颜色代表客户端"))
                             .font(.callout.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.tokenMuted)
                     }
                     Spacer()
                     TokenToolLegend(tools: recentTools, showsGoalLine: true)
@@ -62,13 +62,13 @@ struct StatsView: View {
                     Spacer()
                     Text(subtitle)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                 }
 
                 if rows.isEmpty {
                     Text(L("等待下一次同步"))
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                         .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
                 } else {
                     ForEach(rows) { row in
@@ -119,7 +119,7 @@ private struct StatHeroMetric: View {
                         .lineLimit(1)
                     Text(label)
                         .font(.callout.weight(.bold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

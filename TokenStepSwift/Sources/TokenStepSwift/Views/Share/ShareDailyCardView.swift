@@ -70,7 +70,7 @@ struct ShareDailyCardView: View {
         HStack(spacing: 12) {
             TokenStepMark(size: 42)
             VStack(alignment: .leading, spacing: 2) {
-                Text("TokenStep")
+                Text(AppBrand.displayName)
                     .font(.system(size: 27, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
                 Text(L("每日 Token 消耗追踪"))

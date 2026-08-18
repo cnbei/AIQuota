@@ -301,7 +301,11 @@ enum DataService {
             agentWorkRankVisibility: settings.agentWorkRankVisibility,
             showExperimentalAgentSources: settings.showExperimentalAgentSources,
             language: settings.language,
-            skippedUpdateVersion: settings.skippedUpdateVersion
+            skippedUpdateVersion: settings.skippedUpdateVersion,
+            selectedQuotaProvider: settings.selectedQuotaProvider,
+            cursorDisplayMode: settings.cursorDisplayMode,
+            kimiDisplayMode: settings.kimiDisplayMode,
+            menuBarRingMode: settings.menuBarRingMode
         )
     }
 }

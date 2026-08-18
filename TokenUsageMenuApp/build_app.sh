@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="TokenStep"
+APP_NAME="AIQuota"
 BUNDLE_ID="com.huangshu.TokenStep.prototype"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$ROOT_DIR/TokenUsageMenuApp"

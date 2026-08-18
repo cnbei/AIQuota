@@ -21,26 +21,43 @@ enum QuotaRefreshCoordinator {
 
     static func read(_ provider: QuotaProviderID) -> ProviderQuota {
         do {
+            let quota: ProviderQuota
             switch provider {
             case .codex:
-                return try CodexQuotaService.read().asProviderQuota(.codex)
+                quota = try CodexQuotaService.read().asProviderQuota(.codex)
             case .claude:
-                return try ClaudeQuotaService.read().asProviderQuota(.claude)
+                quota = try ClaudeQuotaService.read().asProviderQuota(.claude)
             case .cursor:
-                return try CursorQuotaService.read()
+                quota = try CursorQuotaService.read()
             case .glm:
-                return try GLMQuotaService.read()
+                quota = try GLMQuotaService.read()
             case .kimi:
-                return try KimiQuotaService.read()
+                quota = try KimiQuotaService.read()
             case .grok:
-                return try GrokQuotaService.read()
+                quota = try GrokQuotaService.read()
             }
+            if quota.isAvailable {
+                writeCache(quota)
+            }
+            return quota
         } catch {
             return ProviderQuota.unavailable(
                 provider,
                 status: status(for: provider, error: error),
                 message: error.localizedDescription
             )
+        }
+    }
+
+    private static func writeCache(_ quota: ProviderQuota) {
+        let url = AppPaths.appSupportRoot
+            .appendingPathComponent("cache/\(quota.provider.rawValue)-quota-cache.json")
+        let cache = ProviderQuotaCache(fetchedAt: quota.fetchedAt ?? Date(), quota: quota)
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(cache).write(to: url, options: [.atomic])
+        } catch {
+            // Cache is best-effort.
         }
     }
 

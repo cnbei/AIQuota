@@ -10,7 +10,7 @@ enum WindowFocus {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             NSApp.activate(ignoringOtherApps: true)
 
-            let mainWindows = NSApp.windows.filter { $0.title == "TokenStep" || $0.identifier?.rawValue == "main" }
+            let mainWindows = NSApp.windows.filter { $0.title == AppBrand.displayName || $0.identifier?.rawValue == "main" }
             if closeTransientPanels {
                 for window in NSApp.windows where window.title.isEmpty && !mainWindows.contains(window) {
                     window.close()

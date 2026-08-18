@@ -1,6 +1,6 @@
 # Release Guide
 
-This guide is for maintainers publishing TokenStep for normal macOS users.
+This guide is for maintainers publishing AIQuota for normal macOS users.
 
 ## Prerequisites
 
@@ -26,8 +26,8 @@ CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 This creates:
 
 ```text
-release/TokenStep-0.1.0.zip
-release/TokenStep-0.1.0.dmg
+release/AIQuota-0.1.0.zip
+release/AIQuota-0.1.0.dmg
 ```
 
 ## Configure Notarization
@@ -68,10 +68,10 @@ Do not commit Apple credentials to the repository.
 After notarization:
 
 ```bash
-spctl -a -vv TokenStepSwift/dist/TokenStep.app
-spctl -a -vv -t install release/TokenStep-0.1.0.dmg
-xcrun stapler validate TokenStepSwift/dist/TokenStep.app
-xcrun stapler validate release/TokenStep-0.1.0.dmg
+spctl -a -vv TokenStepSwift/dist/AIQuota.app
+spctl -a -vv -t install release/AIQuota-0.1.0.dmg
+xcrun stapler validate TokenStepSwift/dist/AIQuota.app
+xcrun stapler validate release/AIQuota-0.1.0.dmg
 ```
 
 ## Publish to GitHub

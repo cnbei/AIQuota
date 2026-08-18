@@ -546,6 +546,7 @@ struct CodexQuotaSnapshot: Equatable {
     var fetchedAt: Date?
     var fiveHour: CodexQuotaWindow?
     var sevenDay: CodexQuotaWindow?
+    var planName: String? = nil
 
     var isAvailable: Bool {
         fiveHour != nil || sevenDay != nil
@@ -838,9 +839,20 @@ struct TokenStepSettings: Codable {
     var showExperimentalAgentSources: Bool
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
+    var selectedQuotaProvider: QuotaProviderID
+    var cursorDisplayMode: CursorDisplayMode
+    var kimiDisplayMode: KimiDisplayMode
+    var menuBarRingMode: MenuBarRingMode
 
     var showCodexQuota: Bool {
         !enabledQuotaProviders.isEmpty
+    }
+
+    var resolvedQuotaProvider: QuotaProviderID {
+        if enabledQuotaProviders.contains(selectedQuotaProvider) {
+            return selectedQuotaProvider
+        }
+        return QuotaProviderID.allCases.first(where: { enabledQuotaProviders.contains($0) }) ?? .codex
     }
 
     enum CodingKeys: String, CodingKey {
@@ -862,6 +874,10 @@ struct TokenStepSettings: Codable {
         case showExperimentalAgentSources = "show_experimental_agent_sources"
         case language
         case skippedUpdateVersion = "skipped_update_version"
+        case selectedQuotaProvider = "selected_quota_provider"
+        case cursorDisplayMode = "cursor_display_mode"
+        case kimiDisplayMode = "kimi_display_mode"
+        case menuBarRingMode = "menu_bar_ring_mode"
     }
 
     static let defaults = TokenStepSettings(
@@ -880,7 +896,11 @@ struct TokenStepSettings: Codable {
         agentWorkRankVisibility: .automatic,
         showExperimentalAgentSources: false,
         language: .system,
-        skippedUpdateVersion: nil
+        skippedUpdateVersion: nil,
+        selectedQuotaProvider: .codex,
+        cursorDisplayMode: .cursorModels,
+        kimiDisplayMode: .membership,
+        menuBarRingMode: .quotaRemaining
     )
 
     init(
@@ -900,7 +920,11 @@ struct TokenStepSettings: Codable {
         showExperimentalAgentSources: Bool,
         language: TokenStepLanguage,
         skippedUpdateVersion: String?,
-        showCodexQuota: Bool? = nil
+        showCodexQuota: Bool? = nil,
+        selectedQuotaProvider: QuotaProviderID = .codex,
+        cursorDisplayMode: CursorDisplayMode = .cursorModels,
+        kimiDisplayMode: KimiDisplayMode = .membership,
+        menuBarRingMode: MenuBarRingMode = .quotaRemaining
     ) {
         self.dailyGoalTokens = dailyGoalTokens
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -931,6 +955,10 @@ struct TokenStepSettings: Codable {
         self.showExperimentalAgentSources = showExperimentalAgentSources
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
+        self.selectedQuotaProvider = selectedQuotaProvider
+        self.cursorDisplayMode = cursorDisplayMode.resolved
+        self.kimiDisplayMode = kimiDisplayMode
+        self.menuBarRingMode = menuBarRingMode
     }
 
     init(from decoder: Decoder) throws {
@@ -979,6 +1007,16 @@ struct TokenStepSettings: Codable {
         showExperimentalAgentSources = try container.decodeIfPresent(Bool.self, forKey: .showExperimentalAgentSources) ?? defaults.showExperimentalAgentSources
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
+        selectedQuotaProvider = try container.decodeIfPresent(QuotaProviderID.self, forKey: .selectedQuotaProvider)
+            ?? defaults.selectedQuotaProvider
+        cursorDisplayMode = (
+            try container.decodeIfPresent(CursorDisplayMode.self, forKey: .cursorDisplayMode)
+            ?? defaults.cursorDisplayMode
+        ).resolved
+        kimiDisplayMode = try container.decodeIfPresent(KimiDisplayMode.self, forKey: .kimiDisplayMode)
+            ?? defaults.kimiDisplayMode
+        menuBarRingMode = try container.decodeIfPresent(MenuBarRingMode.self, forKey: .menuBarRingMode)
+            ?? defaults.menuBarRingMode
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1000,6 +1038,10 @@ struct TokenStepSettings: Codable {
         try container.encode(showExperimentalAgentSources, forKey: .showExperimentalAgentSources)
         try container.encode(language, forKey: .language)
         try container.encodeIfPresent(skippedUpdateVersion, forKey: .skippedUpdateVersion)
+        try container.encode(selectedQuotaProvider, forKey: .selectedQuotaProvider)
+        try container.encode(cursorDisplayMode, forKey: .cursorDisplayMode)
+        try container.encode(kimiDisplayMode, forKey: .kimiDisplayMode)
+        try container.encode(menuBarRingMode, forKey: .menuBarRingMode)
     }
 
     mutating func setQuotaProvider(_ id: QuotaProviderID, enabled: Bool) {

@@ -159,7 +159,7 @@ private struct TokenIslandExpandedView: View {
         HStack(spacing: 8) {
             TokenStepMark(size: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text("TokenStep")
+                Text(AppBrand.displayName)
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(Color.tokenInk.opacity(0.92))
                 Text(L("每日 Token 消耗追踪"))

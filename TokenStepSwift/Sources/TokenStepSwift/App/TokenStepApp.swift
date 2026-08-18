@@ -42,7 +42,11 @@ struct TokenStepApp: App {
                         refreshing: appState.isRefreshing,
                         theme: appState.settings.theme,
                         language: appState.settings.language,
-                        warning: appState.hasLowQuotaWarning
+                        warning: appState.hasLowQuotaWarning,
+                        showsQuotaRemaining: appState.menuBarShowsQuotaRemaining,
+                        quotaRemaining: appState.selectedQuotaRemainingPercent,
+                        quotaHasError: !appState.selectedQuota.isAvailable,
+                        quotaTitle: appState.statusBarQuotaTitle
                     )
                 }
             }
@@ -59,13 +63,13 @@ struct TokenStepApp: App {
                 .environmentObject(appState)
         }
         .commands {
-            CommandMenu("TokenStep") {
+            CommandMenu(AppBrand.displayName) {
                 Button(L("刷新")) {
                     appState.refresh()
                 }
                 .keyboardShortcut("r", modifiers: [.command])
 
-                Button(L("打开 TokenStep")) {
+                Button(L("打开 AIQuota")) {
                     MainWindowPresenter.shared.show(appState: appState)
                 }
                 .keyboardShortcut("o", modifiers: [.command])

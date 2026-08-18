@@ -176,6 +176,10 @@ enum TokenStepTheme: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum AppBrand {
+    static let displayName = "AIQuota"
+}
+
 enum TokenStepThemeRuntime {
     private static var activeTheme: TokenStepTheme = .green
 

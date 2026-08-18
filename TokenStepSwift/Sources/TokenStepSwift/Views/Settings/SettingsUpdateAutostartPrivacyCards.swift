@@ -8,7 +8,7 @@ struct SettingsAutostartCard: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .top, spacing: 14) {
                     VStack(alignment: .leading, spacing: 7) {
-                        Text(L("登录后自动启动 TokenStep"))
+                        Text(L("登录后自动启动 AIQuota"))
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
                         Text(L("像步数一样默默记录，避免漏掉每天的 Token 消耗。"))
@@ -46,7 +46,7 @@ struct SettingsUpdateCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 14) {
                     VStack(alignment: .leading, spacing: 7) {
-                        Text(L("自动检查 TokenStep 新版本"))
+                        Text(L("自动检查 AIQuota 新版本"))
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(Color.tokenInk)
                         Text(L("有更新时先提醒你，下载前会确认。"))

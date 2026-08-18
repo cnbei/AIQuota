@@ -26,7 +26,7 @@ struct UpdateWindowView: View {
             TokenStepMark(size: 60)
 
             VStack(alignment: .leading, spacing: 7) {
-                Text(LFormat("TokenStep %@ 可用", update.version))
+                Text(LFormat("AIQuota %@ 可用", update.version))
                     .font(.system(size: 28, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
                 Text(L("安装完成后会自动重启到新版本"))

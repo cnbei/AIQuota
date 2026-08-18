@@ -22,7 +22,7 @@
 ### 0.2 构建与测试
 
 ```bash
-# 构建并运行（会打 .app 到 TokenStepSwift/dist/TokenStep.app）
+# 构建并运行（会打 .app 到 TokenStepSwift/dist/AIQuota.app）
 script/build_swiftui_and_run.sh
 
 # 只跑测试

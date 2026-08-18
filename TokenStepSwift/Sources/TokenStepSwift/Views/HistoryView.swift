@@ -15,7 +15,7 @@ struct HistoryView: View {
                                 .foregroundStyle(Color.tokenInk)
                             Text(L("颜色越深，用量越高；描边是今天"))
                                 .font(.callout.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.tokenMuted)
                         }
                         Spacer()
                         Text(LFormat("%d 个活跃日", appState.snapshot.totals.activeDays))
@@ -44,7 +44,7 @@ struct HistoryView: View {
                                 .foregroundStyle(Color.tokenInk)
                             Text(historySummaryText)
                                 .font(.callout.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.tokenMuted)
                         }
                         Spacer()
                         TokenToolLegend(tools: historyTools)
@@ -86,7 +86,7 @@ struct HistoryView: View {
             Text(L("主力工具")).frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(.caption.weight(.heavy))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Color.tokenMuted)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color.tokenTrack.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

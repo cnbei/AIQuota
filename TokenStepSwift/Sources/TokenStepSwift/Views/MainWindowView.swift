@@ -70,6 +70,7 @@ struct MainWindowView: View {
                 .id(appState.appearanceID)
         }
         .background(TokenStepBackdrop().id(appState.appearanceID))
+        .preferredColorScheme(.light)
         .onAppear {
             appState.refreshForForeground()
         }
@@ -79,7 +80,7 @@ struct MainWindowView: View {
         HStack(spacing: 12) {
             HStack(spacing: 8) {
                 TokenStepMark(size: 22)
-                Text("TokenStep")
+                Text(AppBrand.displayName)
                     .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
             }
@@ -106,7 +107,7 @@ struct MainWindowView: View {
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(appState.isRefreshing ? Color.secondary.opacity(0.7) : Color.tokenGreen)
+                        .fill(appState.isRefreshing ? Color.tokenMuted : Color.tokenGreen)
                         .frame(width: 7, height: 7)
                     Text(appState.isRefreshing ? L("同步中") : L("已同步"))
                         .font(.caption.weight(.heavy))

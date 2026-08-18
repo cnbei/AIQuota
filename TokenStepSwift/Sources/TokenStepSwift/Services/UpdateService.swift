@@ -126,7 +126,7 @@ enum UpdateService {
             throw UpdateError.installFailed
         }
 
-        for case let url as URL in enumerator where url.lastPathComponent == "TokenStep.app" {
+        for case let url as URL in enumerator where url.lastPathComponent == "AIQuota.app" {
             return url
         }
         throw UpdateError.installFailed
@@ -202,15 +202,15 @@ enum UpdateService {
         requireVerified: Bool,
         scriptPath: String
     ) -> String {
-        let failureTitle = L("TokenStep 自动更新失败")
-        let failureBody = L("请手动把 DMG 里的 TokenStep 拖到 Applications。")
+        let failureTitle = L("AIQuota 自动更新失败")
+        let failureBody = L("请手动把 DMG 里的 AIQuota 拖到 Applications。")
         return """
         #!/bin/bash
         set -euo pipefail
 
         DMG=\(shellQuote(dmgPath))
-        DEST="/Applications/TokenStep.app"
-        APP_NAME="TokenStep.app"
+        DEST="/Applications/AIQuota.app"
+        APP_NAME="AIQuota.app"
         EXECUTABLE_NAME="TokenStepSwift"
         EXPECTED_VERSION=\(shellQuote(version))
         CURRENT_PID="\(currentPID)"
@@ -283,7 +283,7 @@ enum UpdateService {
 
         SRC="$(/usr/bin/find "$MOUNT_POINT" -name "$APP_NAME" -type d -print -quit)"
         if [ -z "$SRC" ]; then
-          echo "TokenStep.app not found in DMG"
+          echo "AIQuota.app not found in DMG"
           exit 1
         fi
         echo "Found source app: $SRC"
@@ -316,7 +316,7 @@ enum UpdateService {
           /bin/sleep 0.4
         fi
 
-        BACKUP="/Applications/TokenStep.app.previous.$(/bin/date +%s)"
+        BACKUP="/Applications/AIQuota.app.previous.$(/bin/date +%s)"
         if [ -d "$DEST" ]; then
           echo "Backing up existing app to $BACKUP"
           /bin/mv "$DEST" "$BACKUP"
@@ -328,7 +328,7 @@ enum UpdateService {
           if [ -d "$BACKUP" ]; then
             /bin/mv "$BACKUP" "$DEST"
           fi
-          echo "Failed to copy TokenStep.app into /Applications"
+          echo "Failed to copy AIQuota.app into /Applications"
           exit 1
         fi
 
@@ -417,7 +417,7 @@ enum UpdateError: LocalizedError {
         case .verificationFailed:
             return L("新版本未通过签名或公证验证，已停止安装。")
         case .installFailed:
-            return L("自动安装失败，请稍后重试，或手动把 TokenStep 拖到 Applications。")
+            return L("自动安装失败，请稍后重试，或手动把 AIQuota 拖到 Applications。")
         }
     }
 }

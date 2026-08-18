@@ -25,6 +25,8 @@ final class AppState: ObservableObject {
     @Published private(set) var tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable
     @Published private(set) var showsUsageRecalibrationNotice = false
     @Published var lastError: String?
+    @Published var isQuotaPinned = false
+    @Published var kimiAuthHint: String?
 
     private var timer: Timer?
     private var foregroundTimer: Timer?
@@ -328,6 +330,43 @@ final class AppState: ObservableObject {
         }
     }
 
+    var selectedQuota: ProviderQuota {
+        let id = settings.resolvedQuotaProvider
+        return quotas[id] ?? .unavailable(id, status: .unavailable, message: L("等待刷新"))
+    }
+
+    var selectedQuotaRemainingPercent: Double {
+        QuotaPresentation.remainingPercent(
+            selectedQuota,
+            cursorMode: settings.cursorDisplayMode.resolved,
+            kimiMode: settings.kimiDisplayMode
+        )
+    }
+
+    var selectedQuotaDetail: String {
+        QuotaPresentation.detail(
+            selectedQuota,
+            cursorMode: settings.cursorDisplayMode.resolved,
+            kimiMode: settings.kimiDisplayMode
+        )
+    }
+
+    var menuBarShowsQuotaRemaining: Bool {
+        settings.menuBarRingMode == .quotaRemaining && settings.showCodexQuota
+    }
+
+    var statusBarQuotaTitle: String {
+        let name = selectedQuota.provider.displayName
+        switch selectedQuota.provider {
+        case .cursor:
+            return "\(name) · \(settings.cursorDisplayMode.resolved.title)"
+        case .kimi:
+            return "\(name) · \(settings.kimiDisplayMode.title)"
+        default:
+            return name
+        }
+    }
+
     private func quotaSortRank(_ quota: ProviderQuota) -> Int {
         if quota.isAvailable && quota.isLow { return 0 }
         if !quota.isAvailable { return 1 }
@@ -464,6 +503,78 @@ final class AppState: ObservableObject {
         return TokenStepSecrets.has(account)
     }
 
+    func setSelectedQuotaProvider(_ id: QuotaProviderID) {
+        if settings.resolvedQuotaProvider == id, settings.enabledQuotaProviders.contains(id) {
+            return
+        }
+        settings.selectedQuotaProvider = id
+        if !settings.enabledQuotaProviders.contains(id) {
+            settings.setQuotaProvider(id, enabled: true)
+        }
+        saveSettingsAndReload()
+        if quotas[id]?.isAvailable != true {
+            refreshCodexQuota(force: true)
+        }
+    }
+
+    func setCursorDisplayMode(_ mode: CursorDisplayMode) {
+        settings.cursorDisplayMode = mode.resolved
+        saveSettingsAndReload()
+    }
+
+    func setKimiDisplayMode(_ mode: KimiDisplayMode) {
+        settings.kimiDisplayMode = mode
+        saveSettingsAndReload()
+    }
+
+    func setMenuBarRingMode(_ mode: MenuBarRingMode) {
+        settings.menuBarRingMode = mode
+        saveSettingsAndReload()
+    }
+
+    func openQuotaDashboard(_ id: QuotaProviderID? = nil) {
+        NSWorkspace.shared.open((id ?? settings.resolvedQuotaProvider).dashboardURL)
+    }
+
+    func importKimiWebAuth() {
+        KimiWebAuth.clearStoredToken()
+        if let token = KimiWebAuth.importFreshFromBrowsers() {
+            do {
+                try KimiWebAuth.saveStoredToken(token)
+                kimiAuthHint = L("已导入可用的 Kimi 登录态")
+                setQuotaProvider(.kimi, enabled: true, confirmNetworkAccess: false)
+                refreshCodexQuota(force: true)
+            } catch {
+                kimiAuthHint = LFormat("保存失败：%@", error.localizedDescription)
+            }
+        } else {
+            kimiAuthHint = L("自动导入失败。请先打开 Kimi 桌面版或在浏览器登录 kimi.com，再点导入；也可粘贴 kimi-auth")
+            isQuotaPinned = true
+            PinnedQuotaPanelController.shared.show(appState: self)
+            NSWorkspace.shared.open(QuotaProviderID.kimi.dashboardURL)
+        }
+    }
+
+    func savePastedKimiAuth(_ token: String) {
+        do {
+            try KimiWebAuth.saveStoredToken(token)
+            kimiAuthHint = L("已保存网页登录态")
+            setQuotaProvider(.kimi, enabled: true, confirmNetworkAccess: false)
+            refreshCodexQuota(force: true)
+        } catch {
+            kimiAuthHint = LFormat("保存失败：%@", error.localizedDescription)
+        }
+    }
+
+    func toggleQuotaPin() {
+        isQuotaPinned.toggle()
+        if isQuotaPinned {
+            PinnedQuotaPanelController.shared.show(appState: self)
+        } else {
+            PinnedQuotaPanelController.shared.hide()
+        }
+    }
+
     func saveQuotaSecret(_ id: QuotaProviderID, value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let account = id.secretAccount else { return }
@@ -590,7 +701,7 @@ final class AppState: ObservableObject {
     private func confirmCursorLocalAccess() -> Bool {
         let alert = NSAlert()
         alert.messageText = L("开启 Cursor 代码产出？")
-        alert.informativeText = L("只读取本机 ai_code_hashes 的计数与模型名，不读取代码、摘要或文件路径。该表每天会被 Cursor 清空，TokenStep 不做历史留存。")
+        alert.informativeText = L("只读取本机 ai_code_hashes 的计数与模型名，不读取代码、摘要或文件路径。该表每天会被 Cursor 清空，AIQuota 不做历史留存。")
         alert.alertStyle = .informational
         alert.addButton(withTitle: L("开启"))
         alert.addButton(withTitle: L("取消"))

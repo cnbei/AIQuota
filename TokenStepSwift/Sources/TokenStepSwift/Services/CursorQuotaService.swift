@@ -9,17 +9,30 @@ enum CursorQuotaService {
             return cached
         }
         let token = try readAccessToken()
-        guard let userId = userId(fromJWT: token) else {
+        guard let userId = userId(fromJWT: token) ?? QuotaAuth.cursorUserId(fromJWT: token) else {
             throw TokenStepError.message(L("未登录 Cursor"))
         }
         let usage = try fetchBestUsage(userId: userId, accessToken: token)
         let windows = windows(from: usage)
+        let metrics = metrics(from: usage)
         let snapshot = ProviderQuota(
             provider: .cursor,
             windows: windows,
             status: windows.isEmpty ? .unavailable : .available,
             fetchedAt: Date(),
-            message: windows.isEmpty ? L("Cursor 额度暂不可用") : nil
+            message: windows.isEmpty ? L("Cursor 额度暂不可用") : nil,
+            planName: planName(from: usage),
+            detail: QuotaPresentation.detail(
+                ProviderQuota(
+                    provider: .cursor,
+                    windows: windows,
+                    status: .available,
+                    metrics: metrics
+                ),
+                cursorMode: .cursorModels,
+                kimiMode: .membership
+            ),
+            metrics: metrics
         )
         if snapshot.isAvailable {
             writeCache(snapshot)
@@ -28,21 +41,7 @@ enum CursorQuotaService {
     }
 
     static func userId(fromJWT token: String) -> String? {
-        let parts = token.split(separator: ".")
-        guard parts.count >= 2 else { return nil }
-        var payload = String(parts[1])
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        while payload.count % 4 != 0 {
-            payload += "="
-        }
-        guard let data = Data(base64Encoded: payload),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        if let sub = object["sub"] as? String, !sub.isEmpty {
-            return sub
-        }
-        return nil
+        QuotaAuth.cursorUserId(fromJWT: token)
     }
 
     private static func readAccessToken() throws -> String {
@@ -62,6 +61,10 @@ enum CursorQuotaService {
     }
 
     private static func fetchBestUsage(userId: String, accessToken: String) throws -> Any {
+        if let dashboard = try? fetchDashboard(accessToken: accessToken),
+           !windows(from: dashboard).isEmpty {
+            return dashboard
+        }
         if let summary = try? fetchJSON(
             url: "https://cursor.com/api/usage-summary",
             userId: userId,
@@ -70,6 +73,21 @@ enum CursorQuotaService {
             return summary
         }
         return try fetchLegacyUsage(userId: userId, accessToken: accessToken)
+    }
+
+    private static func fetchDashboard(accessToken: String) throws -> Any {
+        guard let url = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage") else {
+            throw TokenStepError.message(L("Cursor 额度暂不可用"))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 6
+        request.httpBody = Data("{}".utf8)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return try HTTPJSONClient.jsonObject(for: request)
     }
 
     private static func fetchLegacyUsage(userId: String, accessToken: String) throws -> Any {
@@ -105,7 +123,10 @@ enum CursorQuotaService {
     static func twoPoolWindows(from payload: Any) -> [QuotaWindow]? {
         guard let object = payload as? [String: Any] else { return nil }
         let individual = object["individualUsage"] as? [String: Any]
-        let plan = individual?["plan"] as? [String: Any] ?? object["plan"] as? [String: Any] ?? object
+        let plan = individual?["plan"] as? [String: Any]
+            ?? object["plan"] as? [String: Any]
+            ?? object["planUsage"] as? [String: Any]
+            ?? object
         let reset = date(from: object["billingCycleEnd"] ?? object["resetsAt"] ?? object["resetAt"] ?? plan["resetsAt"])
 
         let auto = QuotaJSON.number(
@@ -120,19 +141,70 @@ enum CursorQuotaService {
                 ?? object["otherModelsPercentUsed"]
                 ?? object["namedPercentUsed"]
         ) ?? percentFromDisplayMessage(object["namedModelSelectedDisplayMessage"])
-
+        // Official Usage only shows the two model pools. includedSpend / limit is
+        // kept on metrics for the "$400 included" copy, not as a third progress bar.
         var windows: [QuotaWindow] = []
         if let auto, let used = normalizedUsedPercent(auto) {
             windows.append(
-                QuotaWindow(kind: .cursorModels, usedPercent: used, remaining: 100 - used, total: 100, resetsAt: reset)
+                QuotaWindow(kind: .cursorModels, usedPercent: used, remaining: 100 - used, total: 100, resetsAt: reset, title: "Cursor Models")
             )
         }
         if let api, let used = normalizedUsedPercent(api) {
             windows.append(
-                QuotaWindow(kind: .otherModels, usedPercent: used, remaining: 100 - used, total: 100, resetsAt: reset)
+                QuotaWindow(kind: .otherModels, usedPercent: used, remaining: 100 - used, total: 100, resetsAt: reset, title: "Other Models")
             )
         }
         return windows.isEmpty ? nil : windows
+    }
+
+    static func metrics(from payload: Any) -> QuotaMetrics? {
+        guard let object = payload as? [String: Any] else { return nil }
+        let individual = object["individualUsage"] as? [String: Any]
+        let plan = individual?["plan"] as? [String: Any]
+            ?? object["plan"] as? [String: Any]
+            ?? object["planUsage"] as? [String: Any]
+            ?? object
+        let auto = QuotaJSON.number(plan["autoPercentUsed"] ?? object["autoPercentUsed"])
+        let api = QuotaJSON.number(plan["apiPercentUsed"] ?? object["apiPercentUsed"])
+        let included = includedUsedPercent(from: object, plan: plan)
+        let limitCents = QuotaJSON.number(plan["limit"] ?? plan["includedLimit"] ?? object["includedAmountCents"])
+        let includedCents = QuotaJSON.number(plan["includedSpend"] ?? plan["used"] ?? plan["totalSpend"])
+        guard included != nil || auto != nil || api != nil else { return nil }
+        return QuotaMetrics(
+            cursorIncludedUsed: included,
+            cursorModelsUsed: auto.flatMap(normalizedUsedPercent),
+            otherModelsUsed: api.flatMap(normalizedUsedPercent),
+            cursorSpendDollars: includedCents.map { $0 / 100 },
+            cursorLimitDollars: limitCents.map { $0 / 100 }
+        )
+    }
+
+    static func planName(from payload: Any) -> String? {
+        guard let object = payload as? [String: Any] else { return nil }
+        let planInfo = (object["planInfo"] as? [String: Any]) ?? object
+        let plan = (object["plan"] as? [String: Any]) ?? [:]
+        return string(planInfo["planName"])
+            ?? string(object["planName"])
+            ?? string(object["membershipType"])
+            ?? string(plan["name"])
+    }
+
+    private static func includedUsedPercent(from object: [String: Any], plan: [String: Any]) -> Double? {
+        let limitCents = QuotaJSON.number(plan["limit"] ?? plan["includedLimit"] ?? object["includedAmountCents"])
+        let includedCents = QuotaJSON.number(plan["includedSpend"] ?? plan["used"] ?? plan["totalSpend"])
+        let remainingCents = QuotaJSON.number(plan["remaining"])
+        if let includedCents, let limitCents, limitCents > 0 {
+            return min(max(includedCents / limitCents * 100, 0), 100)
+        }
+        if let remainingCents, let limitCents, limitCents > 0 {
+            return min(max((1 - remainingCents / limitCents) * 100, 0), 100)
+        }
+        return percentFromDisplayMessage(object["displayMessage"] ?? plan["displayMessage"])
+    }
+
+    private static func string(_ value: Any?) -> String? {
+        guard let text = value as? String, !text.isEmpty else { return nil }
+        return text
     }
 
     static func percentFromDisplayMessage(_ value: Any?) -> Double? {

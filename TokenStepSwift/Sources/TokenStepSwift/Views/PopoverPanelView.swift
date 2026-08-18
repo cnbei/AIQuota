@@ -8,15 +8,22 @@ struct PopoverPanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            columns
+            providerSwitcher
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            PopoverMenuCardView()
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
             notices
             PopoverFooterView()
                 .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
         }
-        .frame(width: 900)
+        .frame(width: 400)
         .background(TokenStepBackdrop())
+        .preferredColorScheme(.light)
+        .tint(Color.tokenGreen)
         .id(appState.appearanceID)
         .onAppear {
             if !isScreenshotRendering {
@@ -26,25 +33,15 @@ struct PopoverPanelView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            TokenStepMark(size: 28)
-            Text("TokenStep")
-                .font(.system(size: 17, weight: .heavy, design: .rounded))
+        HStack(spacing: 8) {
+            TokenStepMark(size: 22)
+            Text(AppBrand.displayName)
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Color.tokenInk)
             Spacer()
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(appState.isRefreshing ? Color.secondary.opacity(0.68) : Color.tokenGreen)
-                    .frame(width: 7, height: 7)
-                Text(appState.isRefreshing ? L("同步中") : L("已同步"))
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk.opacity(0.72))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.tokenSurface, in: Capsule())
-            .overlay(Capsule().stroke(Color.black.opacity(0.055)))
-
+            Text(appState.isRefreshing || appState.isRefreshingCodexQuota ? L("同步中") : L("已同步"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.tokenMuted)
             if !isScreenshotRendering {
                 PopoverCaptureMenuButton(
                     shareTodayAction: { copyShareCard(.today) },
@@ -58,47 +55,39 @@ struct PopoverPanelView: View {
             }
         }
         .padding(.horizontal, 16)
-        .frame(height: 48)
+        .frame(height: 40)
     }
 
-    private var columns: some View {
-        HStack(alignment: .top, spacing: 0) {
-            PopoverTodayRingCard()
-                .frame(width: 188)
-            columnDivider
-            PopoverAgentWorkTable()
-                .frame(minWidth: 240, maxWidth: .infinity)
-            if appState.showsQuotaColumn {
-                columnDivider
-                PopoverQuotaCard()
-                    .frame(width: quotaColumnWidth)
+    private var providerSwitcher: some View {
+        HStack(spacing: 6) {
+            ForEach(switcherProviders) { id in
+                let selected = appState.settings.resolvedQuotaProvider == id
+                Button {
+                    appState.setSelectedQuotaProvider(id)
+                } label: {
+                    Text(switcherTitle(id))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(selected ? Color.white : Color.tokenInk)
+                        .frame(maxWidth: .infinity, minHeight: 28)
+                        .background(selected ? Color.tokenGreen : Color.tokenSurface, in: Capsule())
+                        .overlay(Capsule().stroke(Color.black.opacity(selected ? 0 : 0.08)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            if appState.shouldShowAgentWorkRank, appState.agentWorkRankIdentity != nil {
-                columnDivider
-                PopoverTokenRankCard()
-                    .frame(width: 196)
-            }
-        }
-        .frame(minHeight: columnsMinHeight)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.black.opacity(0.06))
-                .frame(height: 1)
         }
     }
 
-    private var quotaColumnWidth: CGFloat {
-        appState.visibleQuotas.count >= 4 ? 248 : 208
+    private func switcherTitle(_ id: QuotaProviderID) -> String {
+        id == .claude ? "Claude" : id.displayName
     }
 
-    private var columnsMinHeight: CGFloat {
-        appState.visibleQuotas.count >= 5 ? 300 : 248
-    }
-
-    private var columnDivider: some View {
-        Rectangle()
-            .fill(Color.black.opacity(0.06))
-            .frame(width: 1)
+    private var switcherProviders: [QuotaProviderID] {
+        let enabled = QuotaProviderID.allCases.filter { appState.settings.enabledQuotaProviders.contains($0) }
+        if enabled.isEmpty {
+            return [.codex, .cursor, .kimi, .grok]
+        }
+        return enabled
     }
 
     @ViewBuilder
@@ -337,51 +326,47 @@ private struct UpdateNoticeCard: View {
     var update: AvailableUpdate
 
     var body: some View {
-        HStack(alignment: .center, spacing: 13) {
-            Image(systemName: "arrow.down.circle.fill")
-                .font(.system(size: 24, weight: .heavy))
-                .foregroundStyle(Color.tokenGreen)
-                .frame(width: 38, height: 38)
-                .background(Color.tokenMint.opacity(0.22), in: Circle())
-
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.tokenGreen)
                 Text(LFormat("发现新版本 %@", update.version))
-                    .font(.callout.weight(.heavy))
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(Color.tokenInk)
-                Text(update.noteLines.first ?? L("内存占用优化与稳定性改进"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-
-            Spacer()
-
-            Button {
-                appState.showUpdateDetails()
-            } label: {
-                Text(L("立即更新"))
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.tokenGreen, in: Capsule())
+            Text(update.noteLines.first ?? L("内存占用优化与稳定性改进"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            HStack(spacing: 8) {
+                Button {
+                    appState.showUpdateDetails()
+                } label: {
+                    Text(L("立即更新"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.tokenGreen, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                Button {
+                    appState.postponeUpdateNotice()
+                } label: {
+                    Text(L("稍后"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.tokenInk.opacity(0.64))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.tokenTrack.opacity(0.42), in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-
-            Button {
-                appState.postponeUpdateNotice()
-            } label: {
-                Text(L("稍后"))
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(Color.tokenInk.opacity(0.64))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(Color.tokenTrack.opacity(0.42), in: Capsule())
-            }
-            .buttonStyle(.plain)
         }
-        .padding(13)
-        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.tokenGreen.opacity(0.14)))
+        .padding(12)
+        .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.tokenGreen.opacity(0.14)))
     }
 }

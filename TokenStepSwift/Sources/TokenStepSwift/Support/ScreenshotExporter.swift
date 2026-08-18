@@ -70,7 +70,7 @@ enum ScreenshotExporter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmm"
-        return "TokenStep-\(prefix)-\(formatter.string(from: Date())).png"
+        return "AIQuota-\(prefix)-\(formatter.string(from: Date())).png"
     }
 
     private static func render<V: View>(_ view: V) throws -> NSImage {
@@ -111,7 +111,7 @@ enum ScreenshotExporter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyMMdd"
-        let baseName = "TokenStep\(formatter.string(from: Date()))"
+        let baseName = "AIQuota\(formatter.string(from: Date()))"
 
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")

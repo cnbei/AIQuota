@@ -60,4 +60,51 @@ enum StatusBarIconRenderer {
         image.isTemplate = false
         return image
     }
+
+    static func remainingQuotaRing(
+        remaining: Double,
+        hasError: Bool,
+        size: CGFloat = 22,
+        radius: CGFloat = 8.7,
+        lineWidth: CGFloat = 3
+    ) -> NSImage {
+        let size = NSSize(width: size, height: size)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        guard let context = NSGraphicsContext.current?.cgContext else {
+            image.unlockFocus()
+            return image
+        }
+        let clamped = max(0, min(100, remaining))
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        context.setLineWidth(lineWidth)
+        context.setLineCap(.round)
+        context.setStrokeColor(NSColor.labelColor.withAlphaComponent(0.16).cgColor)
+        context.addArc(center: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+        context.strokePath()
+        let rgb = QuotaRemainingColor.rgb(clamped)
+        let color = hasError
+            ? NSColor.secondaryLabelColor
+            : NSColor(calibratedRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+        context.setStrokeColor(color.cgColor)
+        context.addArc(
+            center: center,
+            radius: radius,
+            startAngle: .pi / 2,
+            endAngle: .pi / 2 - (.pi * 2 * (clamped / 100)),
+            clockwise: true
+        )
+        context.strokePath()
+        let text = hasError ? "!" : "\(Int(clamped.rounded()))"
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .bold),
+            .foregroundColor: color
+        ]
+        let drawn = NSAttributedString(string: text, attributes: attributes)
+        let textSize = drawn.size()
+        drawn.draw(at: NSPoint(x: center.x - textSize.width / 2, y: center.y - textSize.height / 2))
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
 }

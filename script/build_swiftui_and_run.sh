@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
-APP_NAME="TokenStep"
+APP_NAME="AIQuota"
 PRODUCT_NAME="TokenStepSwift"
 HELPER_NAME="TokenStepHelper"
 DIST_DIR="$SWIFT_DIR/dist"
@@ -122,6 +122,9 @@ cp "$HELPER_EXECUTABLE" "$HELPERS/$HELPER_NAME"
 if [ -f "$ICON_FILE" ]; then
   cp "$ICON_FILE" "$RESOURCES/TokenStepIcon.icns"
 fi
+if [ -f "$ROOT_DIR/scripts/import_kimi_auth.py" ]; then
+  cp "$ROOT_DIR/scripts/import_kimi_auth.py" "$RESOURCES/import_kimi_auth.py"
+fi
 
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -160,7 +163,9 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 PLIST
 
 if [[ "$LAUNCH" == true ]]; then
-  /usr/bin/open -n "$APP_BUNDLE"
+  rm -rf "/Applications/TokenStep.app"
+  ditto "$APP_BUNDLE" "/Applications/$APP_NAME.app"
+  /usr/bin/open -n "/Applications/$APP_NAME.app"
 fi
 
 if [[ "$VERIFY" == true ]]; then

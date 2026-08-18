@@ -27,15 +27,99 @@ enum QuotaProviderID: String, Codable, CaseIterable, Identifiable, Hashable {
         case .claude: return L("读取 Keychain 中的 Claude OAuth")
         case .cursor: return L("两档额度 + 官方用量事件计入圆环")
         case .glm: return L("填写 Coding Plan API Key，只进钥匙串")
-        case .kimi: return L("粘贴 ~/.kimi 的 access_token，不要用开放平台 key")
-        case .grok: return L("读取 ~/.grok/auth.json，短码不要贴到 TokenStep")
+        case .kimi: return L("网页 kimi-auth 或 ~/.kimi access_token，不要用开放平台 key")
+        case .grok: return L("读取 ~/.grok/auth.json，短码不要贴到 AIQuota")
         }
     }
+
+    var dashboardURL: URL {
+        switch self {
+        case .codex:
+            return URL(string: "https://chatgpt.com/codex/settings/usage")!
+        case .claude:
+            return URL(string: "https://claude.ai/settings/usage")!
+        case .cursor:
+            return URL(string: "https://cursor.com/dashboard/spending")!
+        case .glm:
+            return URL(string: "https://open.bigmodel.cn/usercenter/plan")!
+        case .kimi:
+            return URL(string: "https://www.kimi.com/membership/subscription?tab=quota")!
+        case .grok:
+            return URL(string: "https://grok.com/?_s=usage")!
+        }
+    }
+}
+
+enum CursorDisplayMode: String, Codable, CaseIterable, Identifiable {
+    case included
+    case cursorModels
+    case otherModels
+
+    var id: String { rawValue }
+
+    static var statusBarCases: [CursorDisplayMode] { [.cursorModels, .otherModels] }
+
+    var resolved: CursorDisplayMode {
+        self == .included ? .cursorModels : self
+    }
+
+    var title: String {
+        switch resolved {
+        case .otherModels: return "Other Models"
+        default: return "Cursor Models"
+        }
+    }
+}
+
+enum KimiDisplayMode: String, Codable, CaseIterable, Identifiable {
+    case membership
+    case code
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .membership: return L("总体")
+        case .code: return L("Kimi Code")
+        }
+    }
+}
+
+enum MenuBarRingMode: String, Codable, CaseIterable, Identifiable {
+    case tokenGoal
+    case quotaRemaining
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .tokenGoal: return L("Token 目标")
+        case .quotaRemaining: return L("额度剩余")
+        }
+    }
+}
+
+struct QuotaMetrics: Equatable, Codable, Sendable {
+    var cursorIncludedUsed: Double? = nil
+    var cursorModelsUsed: Double? = nil
+    var otherModelsUsed: Double? = nil
+    var cursorSpendDollars: Double? = nil
+    var cursorLimitDollars: Double? = nil
+    var kimiMembershipUsed: Double? = nil
+    var kimiCodeUsed: Double? = nil
+    var grokWeeklyUsed: Double? = nil
+    var grokBuildUsed: Double? = nil
+    var grokImagineUsed: Double? = nil
+    var grokChatUsed: Double? = nil
+    var grokVoiceUsed: Double? = nil
+    var grokApiUsed: Double? = nil
+    var grokBotUsed: Double? = nil
 }
 
 enum QuotaWindowKind: String, Codable, Equatable {
     case fiveHour
     case sevenDay
+    case thirtyDay
     case session
     case weekly
     case monthlyCredits
@@ -48,6 +132,7 @@ enum QuotaWindowKind: String, Codable, Equatable {
         switch self {
         case .fiveHour: return L("5 小时")
         case .sevenDay: return L("7 天")
+        case .thirtyDay: return L("30 天")
         case .session: return L("会话")
         case .weekly: return L("本周")
         case .monthlyCredits: return L("本月额度")
@@ -62,6 +147,7 @@ enum QuotaWindowKind: String, Codable, Equatable {
         switch self {
         case .fiveHour: return L("5小时")
         case .sevenDay: return L("7天")
+        case .thirtyDay: return L("30天")
         case .session: return L("会话")
         case .weekly: return L("本周")
         case .monthlyCredits: return L("本月")
@@ -69,6 +155,36 @@ enum QuotaWindowKind: String, Codable, Equatable {
         case .spend: return L("花费")
         case .cursorModels: return L("自有")
         case .otherModels: return L("其他")
+        }
+    }
+
+    var badgeLabel: String {
+        switch self {
+        case .fiveHour: return "5h"
+        case .sevenDay: return "7d"
+        case .thirtyDay: return "30d"
+        case .session: return L("会话")
+        case .weekly: return L("本周")
+        case .monthlyCredits: return L("本月")
+        case .tokenWindow: return "Tok"
+        case .spend: return L("花费")
+        case .cursorModels: return L("自有")
+        case .otherModels: return L("其他")
+        }
+    }
+
+    var sortOrder: Int {
+        switch self {
+        case .fiveHour: return 0
+        case .sevenDay: return 1
+        case .thirtyDay: return 2
+        case .session: return 3
+        case .weekly: return 4
+        case .monthlyCredits: return 5
+        case .tokenWindow: return 6
+        case .spend: return 7
+        case .cursorModels: return 8
+        case .otherModels: return 9
         }
     }
 }
@@ -87,8 +203,11 @@ struct QuotaWindow: Equatable, Identifiable, Codable {
     var remaining: Double?
     var total: Double?
     var resetsAt: Date?
+    var title: String? = nil
 
-    var id: String { kind.rawValue }
+    var id: String {
+        "\(kind.rawValue)-\(title ?? "")-\(resetsAt?.timeIntervalSince1970 ?? 0)"
+    }
 
     var remainingPercent: Double {
         if let remaining, let total, total > 0 {
@@ -97,7 +216,10 @@ struct QuotaWindow: Equatable, Identifiable, Codable {
         return min(max(100 - usedPercent, 0), 100)
     }
 
-    var title: String { kind.title }
+    var displayTitle: String {
+        if let title, !title.isEmpty { return title }
+        return kind.title
+    }
 
     var isLow: Bool {
         remainingPercent < 20
@@ -110,6 +232,9 @@ struct ProviderQuota: Equatable, Identifiable, Codable {
     var status: QuotaStatus
     var fetchedAt: Date?
     var message: String?
+    var planName: String? = nil
+    var detail: String? = nil
+    var metrics: QuotaMetrics? = nil
 
     var id: String { provider.rawValue }
 
@@ -119,6 +244,10 @@ struct ProviderQuota: Equatable, Identifiable, Codable {
 
     var shouldDisplay: Bool {
         isAvailable
+    }
+
+    var cursorOfficialWindows: [QuotaWindow] {
+        windows.filter { $0.kind == .cursorModels || $0.kind == .otherModels }
     }
 
     var lowestRemainingPercent: Double? {
@@ -182,13 +311,294 @@ extension CodexQuotaSnapshot {
                 )
             )
         }
+        let detail = windows
+            .map { String(format: "%@ %.0f%% used", $0.kind.badgeLabel, $0.usedPercent) }
+            .joined(separator: " · ")
         return ProviderQuota(
             provider: provider,
             windows: windows,
             status: isAvailable ? .available : .unavailable,
             fetchedAt: fetchedAt,
-            message: isAvailable ? nil : L("暂不可用")
+            message: isAvailable ? nil : L("暂不可用"),
+            planName: planName,
+            detail: detail.isEmpty ? nil : detail
         )
+    }
+}
+
+enum QuotaPresentation {
+    static func remainingPercent(
+        _ quota: ProviderQuota,
+        cursorMode: CursorDisplayMode,
+        kimiMode: KimiDisplayMode
+    ) -> Double {
+        guard quota.isAvailable else { return 0 }
+        if let used = usedPercent(quota, cursorMode: cursorMode, kimiMode: kimiMode) {
+            return max(0, min(100, 100 - used))
+        }
+        return quota.lowestRemainingPercent ?? 0
+    }
+
+    static func detail(
+        _ quota: ProviderQuota,
+        cursorMode: CursorDisplayMode,
+        kimiMode: KimiDisplayMode
+    ) -> String {
+        if let message = quota.message, !quota.isAvailable {
+            return message
+        }
+        switch quota.provider {
+        case .cursor:
+            return cursorDetail(quota, mode: cursorMode)
+        case .kimi:
+            return kimiDetail(quota, mode: kimiMode)
+        default:
+            return quota.detail ?? quota.windows
+                .map { String(format: "%@ %.0f%% used", $0.kind.badgeLabel, $0.usedPercent) }
+                .joined(separator: " · ")
+        }
+    }
+
+    static func usedPercent(
+        _ quota: ProviderQuota,
+        cursorMode: CursorDisplayMode,
+        kimiMode: KimiDisplayMode
+    ) -> Double? {
+        switch quota.provider {
+        case .cursor:
+            switch cursorMode.resolved {
+            case .otherModels:
+                return quota.metrics?.otherModelsUsed
+                    ?? quota.windowUsed(kind: .otherModels)
+                    ?? quota.metrics?.cursorModelsUsed
+            default:
+                return quota.metrics?.cursorModelsUsed
+                    ?? quota.windowUsed(kind: .cursorModels)
+                    ?? quota.metrics?.otherModelsUsed
+            }
+        case .kimi:
+            switch kimiMode {
+            case .membership:
+                return quota.metrics?.kimiMembershipUsed
+                    ?? quota.windowUsed(kind: .monthlyCredits)
+                    ?? quota.metrics?.kimiCodeUsed
+            case .code:
+                return quota.metrics?.kimiCodeUsed
+                    ?? quota.codeWindows.map(\.usedPercent).max()
+                    ?? quota.metrics?.kimiMembershipUsed
+            }
+        default:
+            return quota.windows.map(\.usedPercent).max()
+        }
+    }
+
+    private static func cursorDetail(_ quota: ProviderQuota, mode _: CursorDisplayMode) -> String {
+        var parts: [String] = []
+        if let spend = quota.metrics?.cursorSpendDollars {
+            parts.append(String(format: "$%.2f", spend))
+        }
+        if let used = quota.metrics?.cursorModelsUsed ?? quota.windowUsed(kind: .cursorModels) {
+            parts.append(String(format: "Cursor Models %.0f%%", used))
+        }
+        if let used = quota.metrics?.otherModelsUsed ?? quota.windowUsed(kind: .otherModels) {
+            parts.append(String(format: "Other Models %.0f%%", used))
+        }
+        if parts.isEmpty, let fallback = quota.detail {
+            return fallback
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func kimiDetail(_ quota: ProviderQuota, mode: KimiDisplayMode) -> String {
+        switch mode {
+        case .membership:
+            if let used = quota.metrics?.kimiMembershipUsed ?? quota.windowUsed(kind: .monthlyCredits) {
+                var parts = [String(format: "总使用量 %.2f%%", used)]
+                if let code = quota.metrics?.kimiCodeUsed ?? quota.codeWindows.map(\.usedPercent).max() {
+                    parts.append(String(format: "Code %.0f%% used", code))
+                }
+                return parts.joined(separator: " · ")
+            }
+        case .code:
+            var parts: [String] = []
+            for window in quota.codeWindows.sorted(by: { $0.kind.sortOrder < $1.kind.sortOrder }) {
+                parts.append(String(format: "%@ %.0f%% used", window.kind.badgeLabel, window.usedPercent))
+            }
+            if parts.isEmpty, let code = quota.metrics?.kimiCodeUsed {
+                parts.append(String(format: "Code %.0f%% used", code))
+            }
+            if let membership = quota.metrics?.kimiMembershipUsed ?? quota.windowUsed(kind: .monthlyCredits) {
+                parts.append(String(format: "总体 %.2f%%", membership))
+            }
+            if !parts.isEmpty { return parts.joined(separator: " · ") }
+        }
+        return quota.detail ?? ""
+    }
+}
+
+private extension ProviderQuota {
+    var codeWindows: [QuotaWindow] {
+        windows.filter { ($0.title ?? "").localizedCaseInsensitiveContains("code") }
+    }
+
+    func windowUsed(kind: QuotaWindowKind) -> Double? {
+        windows.first(where: { $0.kind == kind })?.usedPercent
+    }
+
+    func windowUsed(titled title: String) -> Double? {
+        windows.first(where: { $0.title == title })?.usedPercent
+    }
+}
+
+enum QuotaResetFormat {
+    static func absolute(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        formatter.locale = TokenStepLocalization.locale
+        if calendar.isDateInToday(date) || calendar.isDateInTomorrow(date) {
+            formatter.dateFormat = "MM-dd HH:mm"
+        } else if calendar.dateComponents([.day], from: Date(), to: date).day ?? 99 <= 14 {
+            formatter.dateFormat = "MM-dd HH:mm"
+        } else {
+            formatter.dateFormat = "yyyy-MM-dd"
+        }
+        return formatter.string(from: date)
+    }
+
+    static func relative(_ date: Date, now: Date = Date()) -> String {
+        let seconds = date.timeIntervalSince(now)
+        if seconds <= 0 { return "已重置" }
+        let hours = Int(seconds / 3600)
+        if hours < 48 {
+            let h = max(1, hours)
+            let minutes = Int((seconds.truncatingRemainder(dividingBy: 3600)) / 60)
+            if hours < 1 { return "\(max(1, minutes))m" }
+            if h < 24 { return minutes > 0 ? "\(h)h \(minutes)m" : "\(h)h" }
+            return "\(h / 24)d \(h % 24)h"
+        }
+        let days = Int((seconds / 86400).rounded(.up))
+        return "\(days)d"
+    }
+}
+
+struct QuotaPace: Equatable {
+    enum Kind: String, Equatable {
+        case onPace
+        case deficit
+        case reserve
+    }
+
+    var kind: Kind
+    var deltaPercent: Double
+    var expectedUsedPercent: Double
+    var elapsedFraction: Double
+    var eta: Date?
+    var lastsUntilReset: Bool
+
+    var compactDelta: String {
+        let value = Int(abs(deltaPercent).rounded())
+        switch kind {
+        case .onPace: return "0%"
+        case .deficit: return "+\(value)%"
+        case .reserve: return "-\(value)%"
+        }
+    }
+
+    func summary(resetsAt: Date?, now: Date = Date()) -> String {
+        switch kind {
+        case .onPace:
+            return L("节奏正常")
+        case .deficit:
+            if let eta {
+                return LFormat("%d%% 超速 · 预计 %@ 后用完", Int(abs(deltaPercent).rounded()), QuotaResetFormat.relative(eta, now: now))
+            }
+            return LFormat("%d%% 超速", Int(abs(deltaPercent).rounded()))
+        case .reserve:
+            return lastsUntilReset
+                ? LFormat("%d%% 有余量 · 能撑到重置", Int(abs(deltaPercent).rounded()))
+                : LFormat("%d%% 有余量", Int(abs(deltaPercent).rounded()))
+        }
+    }
+}
+
+enum QuotaPaceCalculator {
+    static func windowDuration(for kind: QuotaWindowKind) -> TimeInterval? {
+        switch kind {
+        case .fiveHour: return 5 * 3600
+        case .sevenDay, .weekly: return 7 * 24 * 3600
+        case .thirtyDay, .monthlyCredits: return 30 * 24 * 3600
+        default: return nil
+        }
+    }
+
+    static func pace(
+        usedPercent: Double,
+        resetsAt: Date?,
+        kind: QuotaWindowKind,
+        now: Date = Date()
+    ) -> QuotaPace? {
+        guard let duration = windowDuration(for: kind), let resetsAt else { return nil }
+        let remaining = resetsAt.timeIntervalSince(now)
+        let elapsed = duration - remaining
+        guard duration > 0, elapsed > 0 else { return nil }
+        let fraction = min(max(elapsed / duration, 0), 1)
+        guard fraction >= 0.03 else { return nil }
+
+        let used = min(max(usedPercent, 0), 100)
+        let expected = fraction * 100
+        let delta = used - expected
+        let paceKind: QuotaPace.Kind
+        if abs(delta) < 3 {
+            paceKind = .onPace
+        } else {
+            paceKind = delta > 0 ? .deficit : .reserve
+        }
+
+        var eta: Date?
+        var lastsUntilReset = remaining > 0
+        if used > 0, elapsed > 0 {
+            let burnPerSecond = used / elapsed
+            let secondsToEmpty = (100 - used) / max(burnPerSecond, 0.0001)
+            if secondsToEmpty < remaining {
+                eta = now.addingTimeInterval(secondsToEmpty)
+                lastsUntilReset = false
+            }
+        }
+
+        return QuotaPace(
+            kind: paceKind,
+            deltaPercent: delta,
+            expectedUsedPercent: expected,
+            elapsedFraction: fraction,
+            eta: eta,
+            lastsUntilReset: lastsUntilReset
+        )
+    }
+}
+
+enum QuotaRemainingColor {
+    static func rgb(_ remaining: Double) -> (red: Double, green: Double, blue: Double) {
+        let ratio = max(0, min(100, remaining)) / 100
+        if ratio >= 0.45 {
+            let t = (ratio - 0.45) / 0.55
+            return (0.18 + (1 - t) * 0.16, 0.58 + t * 0.08, 0.24)
+        }
+        if ratio >= 0.20 {
+            let t = (ratio - 0.20) / 0.25
+            return (0.78, 0.46 + t * 0.10, 0.08)
+        }
+        return (0.76, 0.20, 0.18)
+    }
+
+    static func textRGB(_ remaining: Double) -> (red: Double, green: Double, blue: Double) {
+        let ratio = max(0, min(100, remaining)) / 100
+        if ratio >= 0.45 {
+            return (0.09, 0.42, 0.20)
+        }
+        if ratio >= 0.20 {
+            return (0.55, 0.32, 0.04)
+        }
+        return (0.63, 0.13, 0.13)
     }
 }
 

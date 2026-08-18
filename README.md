@@ -1,4 +1,4 @@
-# TokenStep
+# AIQuota
 
 **像记录步数一样，记录你每天的 AI Token 消耗。**
 
@@ -6,7 +6,7 @@ AI 时代，每个人都在和 Agent 一起工作。
 
 但我们很少知道：今天到底用了多少 AI？有没有比昨天更进一步？
 
-TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claude Code 等 AI 编程工具里的 Token 消耗，并把它变成一个像 Apple 健身圆环一样的每日目标。
+AIQuota 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claude Code 等 AI 编程工具里的 Token 消耗，并把它变成一个像 Apple 健身圆环一样的每日目标。
 
 默认目标是：**每天 1 亿 Token**。
 
@@ -20,21 +20,21 @@ TokenStep 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claud
 
 ## 立即下载
 
-下载最新版 DMG，打开后把 `TokenStep.app` 拖进「应用程序」即可使用：
+下载最新版 DMG，打开后把 `AIQuota.app` 拖进「应用程序」即可使用：
 
-[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.2.1.dmg)
+[下载 AIQuota 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest)
 
 也可以从 Release 页面查看所有版本：
 
 [GitHub Releases](https://github.com/Backtthefuture/TokenStep/releases/latest)
 
-TokenStep 已使用 Developer ID 签名并通过 Apple 公证。首次打开时，macOS 可能会出现标准确认弹窗，这是正常现象。
+AIQuota 已使用 Developer ID 签名并通过 Apple 公证。首次打开时，macOS 可能会出现标准确认弹窗，这是正常现象。
 
 Windows版本由十七做了移植，欢迎大家前往使用：https://github.com/canyexuanfan/TokenStep-Windows/releases 
 
-## TokenStep 适合谁？
+## AIQuota 适合谁？
 
-TokenStep 适合这些人：
+AIQuota 适合这些人：
 
 - 每天使用 Codex / Claude Code 写代码的人
 - 用 AI Agent 做内容、开发、研究、自动化的人
@@ -77,7 +77,7 @@ TokenStep 适合这些人：
 
 ## 隐私
 
-TokenStep 默认只做本地统计。
+AIQuota 默认只做本地统计。
 
 它只读取 Token 用量元数据，例如日期、模型、客户端名称和 Token 数量，用于生成趋势、圆环和统计图。
 
@@ -89,15 +89,15 @@ TokenStep 默认只做本地统计。
 
 ## 安装方式
 
-1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.1.48.dmg)。
+1. 从 [GitHub Releases](https://github.com/Backtthefuture/TokenStep/releases/latest) 下载最新版 DMG。
 2. 打开 DMG。
-3. 把 `TokenStep.app` 拖到「应用程序」。
-4. 启动 TokenStep。
-5. 在 macOS 右上角菜单栏点击 TokenStep 图标。
+3. 把 `AIQuota.app` 拖到「应用程序」。
+4. 启动 AIQuota。
+5. 在 macOS 右上角菜单栏点击 AIQuota 图标。
 
 更详细的安装说明见 [docs/INSTALL.md](docs/INSTALL.md)。
 
-## 为什么做 TokenStep？
+## 为什么做 AIQuota？
 
 因为 AI 编程工具正在变成新的「工作现场」。
 
@@ -105,7 +105,7 @@ TokenStep 默认只做本地统计。
 
 但 AI 使用量一直是隐形的。
 
-TokenStep 想把这件事变得可见：
+AIQuota 想把这件事变得可见：
 
 **今天你不是用了多少工具，而是和 AI 一起走了多少步。**
 
@@ -141,7 +141,7 @@ python3 script/github_download_stats.py
 生成的 App 位于：
 
 ```text
-TokenStepSwift/dist/TokenStep.app
+TokenStepSwift/dist/AIQuota.app
 ```
 
 ## 发布打包
@@ -166,8 +166,8 @@ TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
 产物会生成到：
 
 ```text
-release/TokenStep-<version>.zip
-release/TokenStep-<version>.dmg
+release/AIQuota-<version>.zip
+release/AIQuota-<version>.dmg
 ```
 
 维护者说明见 [docs/RELEASE.md](docs/RELEASE.md)。

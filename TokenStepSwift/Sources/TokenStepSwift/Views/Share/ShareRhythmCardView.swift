@@ -39,7 +39,7 @@ struct ShareRhythmCardView: View {
                 .shadow(color: palette.accent.opacity(0.22), radius: 12, x: 0, y: 0)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("TokenStep")
+                Text(AppBrand.displayName)
                     .font(.system(size: 23, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                 Text(L("AI Token 使用追踪"))

@@ -11,8 +11,19 @@ enum HTTPJSONClient {
         return data
     }
 
+    static func exchange(_ request: URLRequest) throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try transport(request)
+        guard let http = response as? HTTPURLResponse else {
+            throw TokenStepError.message(L("网络请求失败"))
+        }
+        return (data, http)
+    }
+
     static func jsonObject(for request: URLRequest) throws -> Any {
-        let data = try data(for: request)
+        let (data, http) = try exchange(request)
+        if !(200..<300).contains(http.statusCode) {
+            throw TokenStepError.message("HTTP \(http.statusCode)")
+        }
         return try JSONSerialization.jsonObject(with: data)
     }
 

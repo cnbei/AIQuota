@@ -62,7 +62,9 @@ struct ShareDailyCardView: View {
             .padding(28)
         }
         .frame(width: 600, height: 840)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .fixedSize()
+        .preferredColorScheme(.light)
         .id(appState.appearanceID)
     }
 
@@ -75,7 +77,7 @@ struct ShareDailyCardView: View {
                     .foregroundStyle(Color.tokenInk)
                 Text(L("每日 Token 消耗追踪"))
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {
@@ -84,7 +86,7 @@ struct ShareDailyCardView: View {
                     .foregroundStyle(Color.tokenInk)
                 Text(day.date)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
             }
         }
     }
@@ -107,7 +109,7 @@ struct ShareDailyCardView: View {
                             .lineLimit(1)
                         Text(LFormat("/ %@ 每圈", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                             .font(.headline.weight(.heavy))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.tokenMuted)
                     }
                     .frame(width: 182)
                 }
@@ -116,7 +118,7 @@ struct ShareDailyCardView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(mode.subtitle)
                         .font(.callout.weight(.heavy))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                     HStack(alignment: .lastTextBaseline, spacing: 8) {
                         Text(totalCompletionText)
                             .font(.system(size: 58, weight: .black, design: .rounded))
@@ -124,7 +126,7 @@ struct ShareDailyCardView: View {
                             .lineLimit(1)
                         Text(L("总完成度"))
                             .font(.callout.weight(.heavy))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.tokenMuted)
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         Text(lap.completedLapsText)
@@ -132,10 +134,10 @@ struct ShareDailyCardView: View {
                             .foregroundStyle(Color.tokenInk.opacity(0.78))
                         Text(lap.perLapGoalText)
                             .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.tokenMuted)
                         Text(mode == .yesterday ? comparisonText : L("今日 Token"))
                             .font(.subheadline.weight(.heavy))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.tokenMuted)
                             .lineLimit(1)
                     }
                 }
@@ -151,10 +153,10 @@ struct ShareDailyCardView: View {
             Text("·")
             Text(L("不上传代码或对话"))
             Spacer()
-            Text("tokenstep.app")
+            Text(AppBrand.watermark)
         }
         .font(.caption.weight(.bold))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Color.tokenMuted)
     }
 
     private var dayNumber: String {
@@ -253,7 +255,7 @@ private struct ShareMetricTile: View {
                 .foregroundStyle(Color.tokenGreen)
             Text(title)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
             Text(value)
                 .font(.headline.weight(.heavy))
                 .foregroundStyle(Color.tokenInk)
@@ -261,7 +263,7 @@ private struct ShareMetricTile: View {
                 .minimumScaleFactor(0.65)
             Text(detail)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -299,7 +301,7 @@ private struct ShareHeroRankRow: View {
                 .background(Color.tokenMint.opacity(0.35), in: Circle())
             HStack(spacing: 3) {
                 Text(row.title)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
                 Text(row.name)
                     .foregroundStyle(Color.tokenInk)
             }
@@ -309,7 +311,7 @@ private struct ShareHeroRankRow: View {
             Spacer(minLength: 8)
             Text(row.value)
                 .font(.caption.weight(.heavy))
-                .foregroundStyle(row.value == L("仅供参考") ? .secondary : Color.tokenInk)
+                .foregroundStyle(row.value == L("仅供参考") ? Color.tokenMuted : Color.tokenInk)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
@@ -336,7 +338,7 @@ private struct ShareBreakdownPanel: View {
                             .foregroundStyle(Color.tokenInk)
                         Text(subtitle)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.tokenMuted)
                     }
                     Spacer()
                 }
@@ -363,7 +365,7 @@ private struct ShareBreakdownPanel: View {
                             .frame(height: 7)
                             Text(row.value)
                                 .font((compact ? Font.subheadline : Font.caption).weight(.heavy))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.tokenMuted)
                                 .lineLimit(1)
                                 .monospacedDigit()
                                 .frame(width: compact ? 72 : 70, alignment: .trailing)
@@ -395,7 +397,7 @@ private struct ShareTrendPanel: View {
                             .foregroundStyle(Color.tokenInk)
                         Text(L("柱越高，用量越多"))
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.tokenMuted)
                     }
                     Spacer()
                     Text(TokenStepFormat.tokens(day.totalTokens, compact: true))

@@ -153,10 +153,10 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(L("AIQuota · Local usage tracker"))
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
                 Text(LFormat("当前版本 %@", UpdateService.currentVersion))
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary.opacity(0.82))
+                    .foregroundStyle(Color.tokenMuted.opacity(0.82))
             }
 
             Spacer()

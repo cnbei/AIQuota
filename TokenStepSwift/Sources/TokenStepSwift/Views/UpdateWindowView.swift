@@ -31,7 +31,7 @@ struct UpdateWindowView: View {
                     .foregroundStyle(Color.tokenInk)
                 Text(L("安装完成后会自动重启到新版本"))
                     .font(.callout.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
             }
 
             Spacer()
@@ -76,7 +76,7 @@ struct UpdateWindowView: View {
                     .foregroundStyle(Color.tokenInk)
                 Text(L("下载后会验证 DMG 中的 App，并替换旧版本"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.tokenMuted)
             }
 
             Spacer()
@@ -100,7 +100,7 @@ struct UpdateWindowView: View {
                 HStack {
                     Text(appState.updateInstallStatus)
                         .font(.caption.weight(.heavy))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.tokenMuted)
                     Spacer()
                     Text(TokenStepFormat.percent(appState.updateDownloadProgress * 100))
                         .font(.caption.weight(.heavy))

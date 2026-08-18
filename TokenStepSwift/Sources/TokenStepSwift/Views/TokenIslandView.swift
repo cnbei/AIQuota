@@ -169,7 +169,7 @@ private struct TokenIslandExpandedView: View {
             Spacer()
             HStack(spacing: 5) {
                 Circle()
-                    .fill(appState.isRefreshing ? Color.secondary.opacity(0.66) : Color.tokenGreen)
+                    .fill(appState.isRefreshing ? Color.tokenMuted.opacity(0.66) : Color.tokenGreen)
                     .frame(width: 6, height: 6)
                 Text(appState.isRefreshing ? L("同步中") : L("已同步"))
                     .font(.caption2.weight(.heavy))
@@ -323,7 +323,7 @@ private struct TokenIslandQuotaMiniView: View {
                 .foregroundStyle(Color.tokenInk.opacity(0.48))
                 .lineLimit(1)
             HStack(spacing: 6) {
-                ForEach(quota.windows.prefix(2)) { window in
+                ForEach((quota.provider == .grok ? quota.grokDisplayWindows : quota.windows).prefix(2)) { window in
                     HStack(spacing: 3) {
                         Text(window.kind.shortTitle)
                             .font(.system(size: 9, weight: .heavy, design: .rounded))

@@ -56,26 +56,27 @@ enum ScreenshotExporter {
     }
 
     @discardableResult
-    static func saveJPGToDownloads<V: View>(_ view: V) throws -> URL {
+    static func saveJPGToDownloads<V: View>(_ view: V, prefix: String) throws -> URL {
         defer { MemoryPressure.relieveAllocatorPressure() }
         let image = try render(view)
         let data = try jpgData(from: image)
-        let url = try uniqueDownloadsURL()
+        let url = try uniqueDownloadsURL(prefix: prefix)
         try data.write(to: url, options: .atomic)
         NSWorkspace.shared.activateFileViewerSelecting([url])
         return url
     }
 
     static func suggestedFileName(prefix: String) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd-HHmm"
-        return "AIQuota-\(prefix)-\(formatter.string(from: Date())).png"
+        "\(AppBrand.displayName)-\(prefix)-\(timestamp(format: "yyyyMMdd-HHmm")).png"
     }
 
     private static func render<V: View>(_ view: V) throws -> NSImage {
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        let renderer = ImageRenderer(
+            content: view
+                .environment(\.colorScheme, .light)
+                .preferredColorScheme(.light)
+        )
+        renderer.scale = max(NSScreen.main?.backingScaleFactor ?? 2, 2)
         guard let image = renderer.nsImage else {
             throw ScreenshotExportError.renderFailed
         }
@@ -107,12 +108,8 @@ enum ScreenshotExporter {
         return data
     }
 
-    private static func uniqueDownloadsURL() throws -> URL {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyMMdd"
-        let baseName = "AIQuota\(formatter.string(from: Date()))"
-
+    private static func uniqueDownloadsURL(prefix: String) throws -> URL {
+        let baseName = "\(AppBrand.displayName)-\(prefix)-\(timestamp(format: "yyMMdd"))"
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
 
@@ -123,5 +120,12 @@ enum ScreenshotExporter {
             index += 1
         }
         return candidate
+    }
+
+    private static func timestamp(format: String) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = format
+        return formatter.string(from: Date())
     }
 }

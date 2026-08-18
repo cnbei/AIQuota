@@ -78,6 +78,21 @@ struct QuotaPresentationFixtureCheck {
         ]
         try assertEqual(Set(windows.map(\.id)).count, 2)
 
+        let grok = ProviderQuota(
+            provider: .grok,
+            windows: [
+                QuotaWindow(kind: .weekly, usedPercent: 2, remaining: 98, total: 100, title: "本周共用"),
+                QuotaWindow(kind: .weekly, usedPercent: 1, remaining: 99, total: 100, title: "Grok Build")
+            ],
+            status: .available,
+            metrics: QuotaMetrics(grokWeeklyUsed: 2)
+        )
+        try assertEqual(grok.grokDisplayWindows.count, 1)
+        try assertNear(
+            QuotaPresentation.remainingPercent(grok, cursorMode: .cursorModels, kimiMode: .membership),
+            98
+        )
+
         let paceNow = Date(timeIntervalSince1970: 1_700_000_000)
         let fiveHours: TimeInterval = 5 * 3600
         try assertTrue(

@@ -17,7 +17,7 @@ final class GrokQuotaServiceTests: XCTestCase {
         )
     }
 
-    func testParsesSharedWeeklyPoolAndProductSplit() {
+    func testParsesSharedWeeklyPoolWithoutProductBars() {
         let payload: [String: Any] = [
             "config": [
                 "creditUsagePercent": 2,
@@ -32,10 +32,17 @@ final class GrokQuotaServiceTests: XCTestCase {
             ]
         ]
         let windows = GrokQuotaService.windows(from: payload)
-        XCTAssertEqual(windows.first?.title, "本周共用")
+        XCTAssertEqual(windows.count, 1)
+        XCTAssertEqual(windows.first?.kind, .weekly)
         XCTAssertEqual(windows.first?.usedPercent, 2, accuracy: 0.01)
-        XCTAssertTrue(windows.contains(where: { $0.title == "Grok Build" && abs($0.usedPercent - 1.5) < 0.01 }))
-        XCTAssertTrue(windows.contains(where: { $0.title == "Imagine" && abs($0.usedPercent - 0.4) < 0.01 }))
+
+        let products = GrokQuotaService.productWindows(
+            from: payload["config"] as? [String: Any] ?? [:],
+            kind: .weekly,
+            reset: nil
+        )
+        XCTAssertTrue(products.contains(where: { $0.title == "Grok Build" && abs($0.usedPercent - 1.5) < 0.01 }))
+        XCTAssertTrue(products.contains(where: { $0.title == "Imagine" && abs($0.usedPercent - 0.4) < 0.01 }))
     }
 
     func testParsesWeeklyCreditsPercent() {

@@ -16,6 +16,7 @@ struct DashboardScreenshotView: View {
         }
         .frame(width: 1000)
         .fixedSize(horizontal: false, vertical: true)
+        .preferredColorScheme(.light)
         .id(appState.appearanceID)
     }
 
@@ -44,7 +45,7 @@ struct DashboardScreenshotView: View {
             Spacer()
             Text("\(L("更新")) \(TokenStepFormat.generatedTime(appState.snapshot.generatedAt))")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tokenMuted)
         }
     }
 

@@ -78,13 +78,13 @@ struct PopoverQuotaCard: View {
                 Text(quota.provider == .grok ? L("本周额度（共用）") : L("重置日程"))
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
-                ForEach(quota.provider == .cursor ? quota.cursorOfficialWindows : quota.windows) { window in
+                ForEach(quota.provider == .cursor ? quota.cursorOfficialWindows : quota.provider == .grok ? quota.grokDisplayWindows : quota.windows) { window in
                     QuotaResetScheduleRow(window: window)
                 }
             }
         }
         if quota.provider == .grok {
-            Text(L("生图 / 视频 / 聊天 / Build 共用 SuperGrok 本周额度，不是独立配额。下面是同一池的产品拆分。"))
+            Text(L("生图和 Grok 共用本周额度"))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -250,6 +250,21 @@ struct ProviderQuota: Equatable, Identifiable, Codable {
         windows.filter { $0.kind == .cursorModels || $0.kind == .otherModels }
     }
 
+    var grokDisplayWindows: [QuotaWindow] {
+        let sharedTitles: Set<String> = ["本周共用", L("本周共用"), "Shared this week"]
+        let shared = windows.filter { window in
+            guard let title = window.title, !title.isEmpty else { return true }
+            return sharedTitles.contains(title)
+        }
+        if let window = shared.first {
+            return [window]
+        }
+        if let weekly = windows.first(where: { $0.kind == .weekly || $0.kind == .monthlyCredits }) {
+            return [weekly]
+        }
+        return Array(windows.prefix(1))
+    }
+
     var lowestRemainingPercent: Double? {
         windows.map(\.remainingPercent).min()
     }
@@ -352,6 +367,10 @@ enum QuotaPresentation {
             return cursorDetail(quota, mode: cursorMode)
         case .kimi:
             return kimiDetail(quota, mode: kimiMode)
+        case .grok:
+            return quota.detail ?? quota.grokDisplayWindows
+                .map { String(format: "%@ %.0f%% used", $0.displayTitle, $0.usedPercent) }
+                .joined(separator: " · ")
         default:
             return quota.detail ?? quota.windows
                 .map { String(format: "%@ %.0f%% used", $0.kind.badgeLabel, $0.usedPercent) }
@@ -387,6 +406,10 @@ enum QuotaPresentation {
                     ?? quota.codeWindows.map(\.usedPercent).max()
                     ?? quota.metrics?.kimiMembershipUsed
             }
+        case .grok:
+            return quota.metrics?.grokWeeklyUsed
+                ?? quota.grokDisplayWindows.map(\.usedPercent).max()
+                ?? quota.windows.map(\.usedPercent).max()
         default:
             return quota.windows.map(\.usedPercent).max()
         }

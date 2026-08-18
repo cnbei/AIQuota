@@ -31,6 +31,7 @@ struct ShareRhythmCardView: View {
         .frame(width: 600, height: 840)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .fixedSize()
+        .id(appState.appearanceID)
     }
 
     private var header: some View {
@@ -177,9 +178,12 @@ struct ShareRhythmCardView: View {
             Text(L("本地统计"))
             Text("·")
             Text(L("不上传对话"))
+            Spacer(minLength: 8)
+            Text(AppBrand.watermark)
         }
         .font(.caption.weight(.heavy))
         .foregroundStyle(Color.white.opacity(0.54))
+        .padding(.horizontal, 16)
         .frame(maxWidth: .infinity)
         .frame(height: 38)
         .background(Color.black.opacity(0.20), in: Capsule())

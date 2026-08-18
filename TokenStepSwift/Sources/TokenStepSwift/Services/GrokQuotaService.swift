@@ -47,7 +47,7 @@ enum GrokQuotaService {
                 fetchedAt: Date(),
                 message: nil,
                 detail: windows
-                    .prefix(4)
+                    .prefix(1)
                     .map { String(format: "%@ %.0f%% used", $0.displayTitle, $0.usedPercent) }
                     .joined(separator: " · "),
                 metrics: QuotaMetrics(grokWeeklyUsed: weekly)
@@ -152,10 +152,9 @@ enum GrokQuotaService {
                     remaining: 100 - usedPercent,
                     total: 100,
                     resetsAt: reset,
-                    title: kind == .weekly ? "本周共用" : nil
+                    title: kind == .weekly ? L("本周共用") : nil
                 )
             )
-            windows.append(contentsOf: productWindows(from: config, kind: kind, reset: reset))
         }
 
         if let used = cent(config["used"] ?? object["used"]),

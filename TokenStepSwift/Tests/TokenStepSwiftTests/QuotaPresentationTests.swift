@@ -77,6 +77,27 @@ final class QuotaPresentationTests: XCTestCase {
         ]
         XCTAssertEqual(Set(windows.map(\.id)).count, 2)
     }
+
+    func testGrokDisplayWindowsKeepSharedPoolOnly() {
+        let quota = ProviderQuota(
+            provider: .grok,
+            windows: [
+                QuotaWindow(kind: .weekly, usedPercent: 2, remaining: 98, total: 100, title: "本周共用"),
+                QuotaWindow(kind: .weekly, usedPercent: 1.5, remaining: 98.5, total: 100, title: "Grok Build"),
+                QuotaWindow(kind: .weekly, usedPercent: 0.4, remaining: 99.6, total: 100, title: "Imagine")
+            ],
+            status: .available,
+            fetchedAt: Date(),
+            metrics: QuotaMetrics(grokWeeklyUsed: 2)
+        )
+        XCTAssertEqual(quota.grokDisplayWindows.count, 1)
+        XCTAssertEqual(quota.grokDisplayWindows.first?.title, "本周共用")
+        XCTAssertEqual(
+            QuotaPresentation.remainingPercent(quota, cursorMode: .cursorModels, kimiMode: .membership),
+            98,
+            accuracy: 0.01
+        )
+    }
 }
 
 private func cursorQuota(

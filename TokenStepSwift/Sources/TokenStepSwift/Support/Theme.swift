@@ -178,6 +178,7 @@ enum TokenStepTheme: String, CaseIterable, Identifiable, Codable {
 
 enum AppBrand {
     static let displayName = "AIQuota"
+    static let watermark = "aiquota.app"
 }
 
 enum TokenStepThemeRuntime {

@@ -146,7 +146,8 @@ struct PopoverPanelView: View {
                     previousDay: previousDay(before: day)
                 )
                 .environmentObject(appState)
-                .environment(\.isScreenshotRendering, true)
+                .environment(\.isScreenshotRendering, true),
+                prefix: mode.filePrefix
             )
         } catch {
             appState.lastError = error.localizedDescription
@@ -182,7 +183,8 @@ struct PopoverPanelView: View {
                     previousDay: payload.previousDay
                 )
                 .environmentObject(appState)
-                .environment(\.isScreenshotRendering, true)
+                .environment(\.isScreenshotRendering, true),
+                prefix: "yesterday-rhythm"
             )
         } catch {
             appState.lastError = error.localizedDescription

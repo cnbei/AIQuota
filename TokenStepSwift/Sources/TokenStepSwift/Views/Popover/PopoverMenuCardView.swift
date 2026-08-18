@@ -151,7 +151,7 @@ struct PopoverMenuCardView: View {
                 }
             }
             if quota.provider == .grok {
-                Text(L("生图 / 视频 / 聊天 / Build 共用 SuperGrok 本周额度，不是独立配额。下面是同一池的产品拆分。"))
+                Text(L("生图和 Grok 共用本周额度"))
                     .font(.footnote)
                     .foregroundStyle(Color.tokenMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -163,6 +163,9 @@ struct PopoverMenuCardView: View {
         if quota.provider == .kimi, appState.settings.kimiDisplayMode == .code {
             let code = quota.windows.filter { ($0.title ?? "").localizedCaseInsensitiveContains("code") }
             return code.isEmpty ? quota.windows : code
+        }
+        if quota.provider == .grok {
+            return quota.grokDisplayWindows
         }
         return quota.windows
     }

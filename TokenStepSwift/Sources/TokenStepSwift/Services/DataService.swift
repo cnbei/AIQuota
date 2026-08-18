@@ -305,7 +305,9 @@ enum DataService {
             selectedQuotaProvider: settings.selectedQuotaProvider,
             cursorDisplayMode: settings.cursorDisplayMode,
             kimiDisplayMode: settings.kimiDisplayMode,
-            menuBarRingMode: settings.menuBarRingMode
+            menuBarRingMode: settings.menuBarRingMode,
+            usageSyncEnabled: settings.usageSyncEnabled,
+            usageSyncRemoteURL: settings.usageSyncRemoteURL
         )
     }
 }

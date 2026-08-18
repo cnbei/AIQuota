@@ -28,4 +28,7 @@ enum AppPaths {
     static let usageRecalibrationNoticeMarker = appSupportRoot.appendingPathComponent("config/usage-recalibration-v6-pending")
     static let updates = appSupportRoot.appendingPathComponent("updates", isDirectory: true)
     static let logs = appSupportRoot.appendingPathComponent("logs", isDirectory: true)
+    static let syncRepoRoot = appSupportRoot.appendingPathComponent("sync/aiquota-usage-sync", isDirectory: true)
+    static let syncMachineIdentityJSON = appSupportRoot.appendingPathComponent("config/sync-machine-identity.json")
+    static let syncOthersDailyCacheJSON = appSupportRoot.appendingPathComponent("cache/usage-sync-others-daily.json")
 }

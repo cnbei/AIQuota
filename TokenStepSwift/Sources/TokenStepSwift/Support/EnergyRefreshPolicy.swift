@@ -11,6 +11,7 @@ enum EnergyRefreshPolicy {
     static let batteryBackgroundFloorSeconds = 30 * 60
     static let quotaTTL: TimeInterval = 15 * 60
     static let rankTTL: TimeInterval = 30 * 60
+    static let usageSyncTTL: TimeInterval = 20 * 60
     static let minimumAutomaticRetryTTL: TimeInterval = 60
     static let maximumForegroundTickSeconds = 60
 

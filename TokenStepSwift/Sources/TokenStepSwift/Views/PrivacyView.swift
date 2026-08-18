@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PrivacyView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var remoteURLDraft = ""
 
     var body: some View {
         VStack(spacing: 12) {
@@ -105,7 +106,88 @@ struct PrivacyView: View {
                     }
                 }
             }
+
+            TokenCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(L("跨机器同步"))
+                        .font(.title3.weight(.heavy))
+                        .foregroundStyle(Color.tokenInk)
+                    Text(L("把本机每日 token 计数同步到你自己的私有 git 仓库，多台电脑会自动叠加显示总用量。只同步日期/模型名/来源名/token 计数，不包含 prompt 或代码正文。"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.tokenMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    SettingsToggleRow(
+                        title: L("开启跨机器同步"),
+                        isOn: Binding(
+                            get: { appState.settings.usageSyncEnabled },
+                            set: { appState.setUsageSyncEnabled($0) }
+                        )
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L("同步仓库地址"))
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color.tokenMuted)
+                        TextField("", text: $remoteURLDraft)
+                        .textFieldStyle(.plain)
+                        .onSubmit {
+                            appState.setUsageSyncRemoteURL(remoteURLDraft)
+                        }
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Color.tokenInk)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.tokenTrack.opacity(0.45), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .onAppear { remoteURLDraft = appState.settings.usageSyncRemoteURL }
+                        .onChange(of: appState.settings.usageSyncRemoteURL) { _, newValue in
+                            remoteURLDraft = newValue
+                        }
+                    }
+
+                    Text(usageSyncStatusText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(appState.usageSyncError != nil ? Color(red: 0.56, green: 0.21, blue: 0.09) : Color.tokenMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 9) {
+                        Button {
+                            appState.refreshUsageSync(force: true)
+                        } label: {
+                            Text(appState.isSyncingUsage ? L("同步中…") : L("立即同步"))
+                                .font(.callout.weight(.bold))
+                                .padding(.horizontal, 14)
+                                .frame(height: 36)
+                        }
+                        .buttonStyle(SettingsSecondaryButtonStyle())
+                        .disabled(!appState.settings.usageSyncEnabled || appState.isSyncingUsage)
+                    }
+
+                    Text(L("需要先在这台电脑上安装并登录 origin CLI（origin auth login），否则同步会失败但不影响其它功能。"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.tokenMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
+    }
+
+    private var usageSyncStatusText: String {
+        if appState.isSyncingUsage {
+            return L("同步中…")
+        }
+        if let error = appState.usageSyncError {
+            return error
+        }
+        if let lastSyncAt = appState.lastUsageSyncAt {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            return LFormat("上次同步 %@", formatter.string(from: lastSyncAt))
+        }
+        if appState.settings.usageSyncEnabled {
+            return L("尚未同步")
+        }
+        return L("未开启")
     }
 }
 

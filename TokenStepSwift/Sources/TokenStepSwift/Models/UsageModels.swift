@@ -843,6 +843,8 @@ struct TokenStepSettings: Codable {
     var cursorDisplayMode: CursorDisplayMode
     var kimiDisplayMode: KimiDisplayMode
     var menuBarRingMode: MenuBarRingMode
+    var usageSyncEnabled: Bool
+    var usageSyncRemoteURL: String
 
     var showCodexQuota: Bool {
         !enabledQuotaProviders.isEmpty
@@ -878,7 +880,11 @@ struct TokenStepSettings: Codable {
         case cursorDisplayMode = "cursor_display_mode"
         case kimiDisplayMode = "kimi_display_mode"
         case menuBarRingMode = "menu_bar_ring_mode"
+        case usageSyncEnabled = "usage_sync_enabled"
+        case usageSyncRemoteURL = "usage_sync_remote_url"
     }
+
+    static let defaultUsageSyncRemoteURL = "https://origin.cursor.com/liubei/aiquota-usage-sync.git"
 
     static let defaults = TokenStepSettings(
         dailyGoalTokens: 100_000_000,
@@ -900,7 +906,9 @@ struct TokenStepSettings: Codable {
         selectedQuotaProvider: .codex,
         cursorDisplayMode: .cursorModels,
         kimiDisplayMode: .membership,
-        menuBarRingMode: .quotaRemaining
+        menuBarRingMode: .quotaRemaining,
+        usageSyncEnabled: false,
+        usageSyncRemoteURL: defaultUsageSyncRemoteURL
     )
 
     init(
@@ -924,7 +932,9 @@ struct TokenStepSettings: Codable {
         selectedQuotaProvider: QuotaProviderID = .codex,
         cursorDisplayMode: CursorDisplayMode = .cursorModels,
         kimiDisplayMode: KimiDisplayMode = .membership,
-        menuBarRingMode: MenuBarRingMode = .quotaRemaining
+        menuBarRingMode: MenuBarRingMode = .quotaRemaining,
+        usageSyncEnabled: Bool = false,
+        usageSyncRemoteURL: String = TokenStepSettings.defaultUsageSyncRemoteURL
     ) {
         self.dailyGoalTokens = dailyGoalTokens
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -959,6 +969,9 @@ struct TokenStepSettings: Codable {
         self.cursorDisplayMode = cursorDisplayMode.resolved
         self.kimiDisplayMode = kimiDisplayMode
         self.menuBarRingMode = menuBarRingMode
+        self.usageSyncEnabled = usageSyncEnabled
+        let trimmedRemoteURL = usageSyncRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.usageSyncRemoteURL = trimmedRemoteURL.isEmpty ? TokenStepSettings.defaultUsageSyncRemoteURL : trimmedRemoteURL
     }
 
     init(from decoder: Decoder) throws {
@@ -1017,6 +1030,10 @@ struct TokenStepSettings: Codable {
             ?? defaults.kimiDisplayMode
         menuBarRingMode = try container.decodeIfPresent(MenuBarRingMode.self, forKey: .menuBarRingMode)
             ?? defaults.menuBarRingMode
+        usageSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .usageSyncEnabled) ?? defaults.usageSyncEnabled
+        let decodedRemoteURL = try container.decodeIfPresent(String.self, forKey: .usageSyncRemoteURL)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        usageSyncRemoteURL = (decodedRemoteURL?.isEmpty == false ? decodedRemoteURL : nil) ?? defaults.usageSyncRemoteURL
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1042,6 +1059,8 @@ struct TokenStepSettings: Codable {
         try container.encode(cursorDisplayMode, forKey: .cursorDisplayMode)
         try container.encode(kimiDisplayMode, forKey: .kimiDisplayMode)
         try container.encode(menuBarRingMode, forKey: .menuBarRingMode)
+        try container.encode(usageSyncEnabled, forKey: .usageSyncEnabled)
+        try container.encode(usageSyncRemoteURL, forKey: .usageSyncRemoteURL)
     }
 
     mutating func setQuotaProvider(_ id: QuotaProviderID, enabled: Bool) {

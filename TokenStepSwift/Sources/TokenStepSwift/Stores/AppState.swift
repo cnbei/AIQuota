@@ -24,6 +24,9 @@ final class AppState: ObservableObject {
     @Published private(set) var updateDownloadedURL: URL?
     @Published private(set) var tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable
     @Published private(set) var showsUsageRecalibrationNotice = false
+    @Published private(set) var isSyncingUsage = false
+    @Published private(set) var lastUsageSyncAt: Date?
+    @Published var usageSyncError: String?
     @Published var lastError: String?
     @Published var isQuotaPinned = false
     @Published var kimiAuthHint: String?
@@ -38,7 +41,9 @@ final class AppState: ObservableObject {
     private var lastRankRefreshAttemptAt: Date?
     private var lastAutomaticUsageRefreshAttemptAt: Date?
     private var lastUsageObservedAt: Date?
+    private var lastUsageSyncAttemptAt: Date?
     private var ledgerSnapshot: UsageSnapshot = .empty
+    private var othersDaily: [DailyUsage] = UsageSyncService.loadCachedOthersDaily()
     private var isRefreshingCursorUsage = false
 
     init() {
@@ -48,6 +53,7 @@ final class AppState: ObservableObject {
         configureTimer()
         refreshCodexQuota()
         refreshTokenRank()
+        refreshUsageSync()
         scheduleDeferredUpdateCheck()
     }
 
@@ -146,7 +152,7 @@ final class AppState: ObservableObject {
         settings = loadedSettings
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
         ledgerSnapshot = snapshot
-        applyCursorOfficialUsageOverlay()
+        applyOverlays()
         showsUsageRecalibrationNotice = DataService.hasPendingUsageRecalibrationNotice
         if loadedSettings.enabledQuotaProviders.isEmpty {
             quotas = [:]
@@ -212,8 +218,9 @@ final class AppState: ObservableObject {
             if collectionSucceeded, outcome != .updatedWhileSourcesChanged {
                 lastUsageObservedAt = Date()
             }
-            applyCursorOfficialUsageOverlay()
+            applyOverlays()
             refreshCursorOfficialUsage()
+            refreshUsageSync()
             isRefreshing = false
             if pendingRefreshAfterCurrent {
                 let force = pendingForcedRefresh
@@ -492,7 +499,7 @@ final class AppState: ObservableObject {
         if settings.enabledQuotaProviders.isEmpty {
             quotas = [:]
             isRefreshingCodexQuota = false
-            applyCursorOfficialUsageOverlay()
+            applyOverlays()
         } else {
             refreshCodexQuota(force: true)
         }
@@ -886,7 +893,7 @@ final class AppState: ObservableObject {
     }
 
     func refreshCursorOfficialUsage(force: Bool = false, now: Date = Date()) {
-        applyCursorOfficialUsageOverlay()
+        applyOverlays()
         guard settings.cursorQuotaEnabled else { return }
         guard !isRefreshingCursorUsage else { return }
         if !force,
@@ -904,9 +911,78 @@ final class AppState: ObservableObject {
             _ = await Task.detached(priority: .utility) {
                 Result { try CursorUsageService.refresh(historyDays: historyDays) }
             }.value
-            applyCursorOfficialUsageOverlay()
+            applyOverlays()
             isRefreshingCursorUsage = false
         }
+    }
+
+    func refreshUsageSync(force: Bool = false, now: Date = Date()) {
+        guard settings.usageSyncEnabled else {
+            othersDaily = []
+            usageSyncError = nil
+            applyOverlays()
+            return
+        }
+        guard !isSyncingUsage else { return }
+        if !force,
+           EnergyRefreshPolicy.isFresh(
+               lastAttemptAt: lastUsageSyncAttemptAt,
+               ttl: EnergyRefreshPolicy.usageSyncTTL,
+               now: now
+           ) {
+            return
+        }
+        lastUsageSyncAttemptAt = now
+        isSyncingUsage = true
+        let remoteURLString = settings.usageSyncRemoteURL
+        let localSnapshot = ledgerSnapshot
+        let historyDays = settings.historyDays
+        Task {
+            do {
+                let others = try await Task.detached(priority: .utility) {
+                    try UsageSyncService.sync(
+                        remoteURLString: remoteURLString,
+                        localSnapshot: localSnapshot,
+                        historyDays: historyDays
+                    )
+                }.value
+                othersDaily = others
+                lastUsageSyncAt = Date()
+                usageSyncError = nil
+            } catch {
+                usageSyncError = error.localizedDescription
+            }
+            isSyncingUsage = false
+            applyOverlays()
+        }
+    }
+
+    func setUsageSyncEnabled(_ enabled: Bool) {
+        settings.usageSyncEnabled = enabled
+        saveSettingsAndReload()
+        if enabled {
+            refreshUsageSync(force: true)
+        } else {
+            othersDaily = []
+            usageSyncError = nil
+            lastUsageSyncAt = nil
+            applyOverlays()
+        }
+    }
+
+    func setUsageSyncRemoteURL(_ url: String) {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.usageSyncRemoteURL = trimmed.isEmpty ? TokenStepSettings.defaultUsageSyncRemoteURL : trimmed
+        saveSettingsAndReload()
+        if settings.usageSyncEnabled {
+            refreshUsageSync(force: true)
+        }
+    }
+
+    private func applyOverlays() {
+        applyCursorOfficialUsageOverlay()
+        guard settings.usageSyncEnabled, !othersDaily.isEmpty else { return }
+        snapshot = Self.mergingOthersDaily(othersDaily, into: snapshot)
     }
 
     private func applyCursorOfficialUsageOverlay() {
@@ -918,6 +994,31 @@ final class AppState: ObservableObject {
             return
         }
         snapshot = CursorUsageService.merge(ledgerSnapshot, days: cache.days)
+    }
+
+    private static func mergingOthersDaily(_ othersDaily: [DailyUsage], into snapshot: UsageSnapshot) -> UsageSnapshot {
+        var dailyByDate = Dictionary(uniqueKeysWithValues: snapshot.daily.map { ($0.date, $0) })
+        for other in othersDaily {
+            var day = dailyByDate[other.date] ?? DailyUsage(date: other.date, tools: [:], totalTokens: 0, cost: 0)
+            day.totalTokens += other.totalTokens
+            day.cost += other.cost
+            for (tool, tokens) in other.tools {
+                day.tools[tool, default: 0] += tokens
+            }
+            for (model, tokens) in other.models {
+                day.models[model, default: 0] += tokens
+            }
+            dailyByDate[other.date] = day
+        }
+        let daily = dailyByDate.values.sorted { $0.date < $1.date }
+        var merged = snapshot
+        merged.daily = daily
+        merged.totals = UsageTotals(
+            tokens: daily.map(\.totalTokens).reduce(0, +),
+            cost: daily.map(\.cost).reduce(0, +),
+            activeDays: daily.filter { $0.totalTokens > 0 }.count
+        )
+        return merged
     }
 
     private func saveSettingsAndReload() {

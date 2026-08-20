@@ -1,16 +1,67 @@
 #!/usr/bin/env python3
-"""Import kimi-auth from local browsers and print the JWT to stdout.
+"""Import a fresh kimi-auth JWT and print it to stdout.
 
-Used by AIQuota for membership GetSubscriptionStats auth.
-Requires: pip3 install --user browser-cookie3
+Prefers the official Kimi Desktop cookie store, then local browsers.
+Expired JWTs are skipped so a stale Edge/Chrome cookie cannot hide a
+valid Kimi Desktop session.
 """
 
 from __future__ import annotations
 
+import base64
+import json
+import sqlite3
 import sys
+import time
+from pathlib import Path
 
 
-def main() -> int:
+def jwt_fresh(token: str, leeway: int = 300) -> bool:
+    parts = token.split(".")
+    if len(parts) != 3:
+        return False
+    payload = parts[1] + "=" * (-len(parts[1]) % 4)
+    try:
+        data = json.loads(base64.urlsafe_b64decode(payload))
+    except (ValueError, json.JSONDecodeError):
+        return False
+    exp = data.get("exp")
+    if not isinstance(exp, (int, float)):
+        return False
+    return exp - time.time() > leeway
+
+
+def from_kimi_desktop() -> str | None:
+    db = Path.home() / "Library/Application Support/kimi-desktop/Cookies"
+    if not db.is_file():
+        return None
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        rows = con.execute(
+            """
+            SELECT value FROM cookies
+            WHERE name = 'kimi-auth'
+              AND (host_key = '.kimi.com' OR host_key = 'kimi.com'
+                   OR host_key LIKE '%kimi.com')
+            ORDER BY last_access_utc DESC
+            LIMIT 5
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    for (value,) in rows:
+        token = (value or "").strip()
+        if jwt_fresh(token):
+            return token
+    return None
+
+
+def from_browsers() -> str | None:
     try:
         import browser_cookie3
     except ImportError:
@@ -18,7 +69,7 @@ def main() -> int:
             "MISSING_DEP: pip3 install --user browser-cookie3",
             file=sys.stderr,
         )
-        return 2
+        return None
 
     loaders = []
     for name in ("edge", "chrome", "chromium", "brave", "safari"):
@@ -36,10 +87,17 @@ def main() -> int:
             if cookie.name != "kimi-auth":
                 continue
             value = (cookie.value or "").strip()
-            if value.count(".") == 2:
-                sys.stdout.write(value)
-                return 0
+            if jwt_fresh(value):
+                return value
+    return None
 
+
+def main() -> int:
+    for getter in (from_kimi_desktop, from_browsers):
+        token = getter()
+        if token:
+            sys.stdout.write(token)
+            return 0
     print("NO_TOKEN", file=sys.stderr)
     return 1
 

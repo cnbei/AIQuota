@@ -1,79 +1,177 @@
 # AIQuota
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+**像记录步数一样，记录你每天的 AI Token 消耗。**
 
-macOS menu bar app that shows remaining AI coding quota as a colored ring.
+AI 时代，每个人都在和 Agent 一起工作。
 
-**Providers**
+但我们很少知道：今天到底用了多少 AI？有没有比昨天更进一步？
 
-| Provider | Source | What the ring shows |
-| --- | --- | --- |
-| **Codex** (default) | `~/.codex/auth.json` → ChatGPT usage API | Remaining quota % |
-| **Cursor** | Local Cursor login (`state.vscdb`) → Dashboard usage API | Remaining **Cursor Models** % (aligned with [Spending](https://cursor.com/dashboard/spending)) |
-| **Kimi** | Website `kimi-auth` cookie → membership stats | Remaining **membership total usage** % |
-| **Grok** | `~/.grok/auth.json` → Grok Build billing API | Remaining **Grok Build** credits % |
+AIQuota 是一个 macOS 菜单栏 App，用来本地统计你在 Codex、Claude Code 等 AI 编程工具里的 Token 消耗，并把它变成一个像 Apple 健身圆环一样的每日目标。
 
-Ring colors: green = plenty left, red = almost used up. The number in the center is **remaining percent**.
+默认目标是：**每天 1 亿 Token**。
 
-## Requirements
+当你超过目标，圆环会进入下一圈。用得越多，颜色越深。
 
-- macOS 13+
-- Xcode Command Line Tools / Swift 5.9+
-- **Codex / Cursor**: already signed in on this Mac
-- **Kimi**: website session cookie `kimi-auth` (not the Code CLI OAuth token)
-- **Grok**: run `grok login` so `~/.grok/auth.json` has a valid OIDC session
+它不是为了严肃比较，而是让你直观看到：今天你和 AI 一起走了多远。
 
-Optional (for one-click Kimi import):
+<img width="412" height="627" alt="image" src="https://github.com/user-attachments/assets/c4196b33-6a60-42a4-b66a-6a4d516b459a" />
+<img width="560" height="554" alt="image" src="https://github.com/user-attachments/assets/dbb7d00c-858e-4897-a04c-43ca45366d30" />
+
+
+## 立即下载
+
+下载最新版 DMG，打开后把 `AIQuota.app` 拖进「应用程序」即可使用：
+
+[下载 AIQuota 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest)
+
+也可以从 Release 页面查看所有版本：
+
+[GitHub Releases](https://github.com/Backtthefuture/TokenStep/releases/latest)
+
+AIQuota 已使用 Developer ID 签名并通过 Apple 公证。首次打开时，macOS 可能会出现标准确认弹窗，这是正常现象。
+
+Windows版本由十七做了移植，欢迎大家前往使用：https://github.com/canyexuanfan/TokenStep-Windows/releases 
+
+## AIQuota 适合谁？
+
+AIQuota 适合这些人：
+
+- 每天使用 Codex / Claude Code 写代码的人
+- 用 AI Agent 做内容、开发、研究、自动化的人
+- 想知道自己每天到底消耗了多少 AI Token 的人
+- 把 AI 当成生产力基础设施，而不是偶尔试用工具的人
+
+以前我们看步数，知道自己今天有没有动起来。
+
+现在我们看 Token 消耗，知道自己今天有没有真正用 AI 推进工作。
+
+## 它能做什么？
+
+- 菜单栏实时显示今日 Token 消耗和进度圆环。
+- 点击菜单栏打开轻量浮层。
+- 原生 macOS 仪表盘：今日、历史、统计、模型与工具、隐私。
+- 超过 1 亿后自动进入第 2 圈、第 3 圈。
+- 最近 30 天 Token 使用趋势。
+- 按客户端、按模型查看用量统计。
+- 粗略估算 Token 消耗金额。
+- 每日目标可设置，默认每天一个亿。
+- 打开面板时按设置的新鲜度刷新；后台在接电时最低 15 分钟、电池或低电量模式下最低 30 分钟刷新，并跳过未变化的数据。
+- 开机启动，可在设置里关闭。
+- 多种主题色，菜单栏、圆环、活动墙和按钮会一起变化。
+- 一键截图分享当前页面。
+- 一键生成「昨日 AI 节奏」分享卡，展示 24 小时使用波形、峰值时段和节奏标签。
+- Codex / Claude Code 剩余额度可在设置中打开，默认关闭。
+- 自动检查更新，发现新版后可下载已签名公证的 DMG。
+- 本地数据存放在 `~/Library/Application Support/TokenStep`。
+
+## 当前支持
+
+- Codex：读取本地 JSONL 用量元数据并维护逐会话增量缓存；缓存异常时自动重建，必要时回退 Codex 本地 SQLite 汇总。
+- Claude Code：读取 `~/.claude/projects/**/*.jsonl` 里的 usage 元数据。
+- CC Switch：实验支持，读取本机 `proxy_request_logs` 中成功且 token 数大于 0 的请求行。
+- 额度显示：Codex 读取本机 Codex 账户限额；Claude Code 会在本机读取 Claude Code 钥匙串凭证，并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度。
+
+更多 AI 编程工具支持会逐步加入。
+
+支持策略和候选 Agent 说明见 [docs/AGENT_SUPPORT.md](docs/AGENT_SUPPORT.md)。
+
+## 隐私
+
+AIQuota 默认只做本地统计。
+
+它只读取 Token 用量元数据，例如日期、模型、客户端名称和 Token 数量，用于生成趋势、圆环和统计图。
+
+它不会上传你的代码、prompt、对话正文或项目文件。
+
+「消耗金额」只是本地粗略估算，不等于真实账单。
+
+完整说明见 [docs/PRIVACY.md](docs/PRIVACY.md)。
+
+## 安装方式
+
+1. 从 [GitHub Releases](https://github.com/Backtthefuture/TokenStep/releases/latest) 下载最新版 DMG。
+2. 打开 DMG。
+3. 把 `AIQuota.app` 拖到「应用程序」。
+4. 启动 AIQuota。
+5. 在 macOS 右上角菜单栏点击 AIQuota 图标。
+
+更详细的安装说明见 [docs/INSTALL.md](docs/INSTALL.md)。
+
+## 为什么做 AIQuota？
+
+因为 AI 编程工具正在变成新的「工作现场」。
+
+过去我们用日历看时间，用步数看运动，用记账软件看消费。
+
+但 AI 使用量一直是隐形的。
+
+AIQuota 想把这件事变得可见：
+
+**今天你不是用了多少工具，而是和 AI 一起走了多少步。**
+
+## 下载统计
+
+查看 GitHub Release 下载数：
 
 ```bash
-pip3 install --user browser-cookie3
+python3 script/github_download_stats.py
 ```
 
-## Run
+统计方案见 [docs/ANALYTICS.md](docs/ANALYTICS.md)。
+
+## 本地构建
+
+要求：
+
+- macOS 14+
+- Xcode Command Line Tools
+
+构建并运行：
 
 ```bash
-./scripts/run.sh
+./script/build_and_run.sh --verify
 ```
 
-Builds a release binary and launches `dist/AIQuota.app` (menu-bar only, no Dock icon via `LSUIElement`).
-
-Build only:
+只构建不启动：
 
 ```bash
-swift build -c release
+./script/build_swiftui_and_run.sh --no-launch
 ```
 
-## Usage
+生成的 App 位于：
 
-1. Click the menu bar ring to open the panel.
-2. Use the segmented control to switch **Codex / Cursor / Kimi**.
-3. **Refresh** pulls the latest usage (auto-refresh about every 3 minutes).
-4. **Open dashboard** jumps to the provider’s usage page.
-5. **Pin** (top-right) floats a sticky panel so it stays open while you follow browser steps (useful for Kimi auth).
-6. On **Cursor**, switch the menu-bar ring between **Cursor Models** and **Other Models**.
-7. On **Kimi**, switch the menu-bar ring between **总体** (membership total) and **Kimi Code** (tightest of Code 5h / 7d).
+```text
+TokenStepSwift/dist/AIQuota.app
+```
 
-The panel also lists **reset schedule** windows when the API provides them (e.g. 5h / 7d / 30d). Preferences persist across launches.
+## 发布打包
 
-### Kimi auth
+Developer ID 签名：
 
-Kimi Code CLI tokens cannot call the membership stats API (401). You need the website cookie:
+```bash
+TOKENSTEP_VERSION=0.2.1 \
+CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+./script/package_release.sh
+```
 
-1. Sign in at [My quota](https://www.kimi.com/membership/subscription?tab=quota).
-2. In AIQuota, switch to **Kimi** → **Import web login** (reads Chrome / Edge / Brave / Chromium / Safari cookies via `browser-cookie3`).
-3. If that fails: DevTools → Application → Cookies → copy `kimi-auth` → **Paste kimi-auth**.
-4. Or set env var `KIMI_AUTH_TOKEN`.
+签名 + Apple 公证：
 
-The token is cached under `~/Library/Application Support/AIQuota/`.
+```bash
+TOKENSTEP_VERSION=0.2.1 \
+CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
+./script/package_release.sh --notarize
+```
 
-Kimi auth UI (tutorial / paste / import) appears **only** on the Kimi tab.
+产物会生成到：
 
-## Privacy
+```text
+release/AIQuota-<version>.zip
+release/AIQuota-<version>.dmg
+```
 
-Credentials stay on your machine. The app only uses existing local login state (or a cookie you paste) to call each provider’s usage endpoint. Nothing is uploaded to a third-party server.
+维护者说明见 [docs/RELEASE.md](docs/RELEASE.md)。
 
-Usage APIs are unofficial / internal and may break when vendors change them.
+## 开源协议
 
-## License
-
-Use and modify freely for personal use.
+MIT。见 [LICENSE](LICENSE)。

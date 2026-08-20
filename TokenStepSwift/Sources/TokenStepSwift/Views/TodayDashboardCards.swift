@@ -31,15 +31,11 @@ struct TodayHeroCard: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.tokenMuted)
 
-                    HStack(spacing: 8) {
-                        TodayMetricChip(label: L("约合美元"), value: TokenStepFormat.money(appState.today.displayCost))
-                        TodayMetricChip(label: L("活跃小时"), value: "\(appState.todayAgentWork.recordedActiveHours) h")
-                        TodayMetricChip(label: L("累计"), value: TokenStepFormat.tokens(appState.snapshot.totals.tokens, compact: true))
-                        TodayMetricChip(label: L("达标天"), value: LFormat("%d 天", appState.goalDays))
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                        metricChips
                     }
                 }
-
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -47,6 +43,14 @@ struct TodayHeroCard: View {
     private var heroSubtitle: String {
         let today = DateFormatter.tokenStepDay.string(from: Date())
         return LFormat("今日 %@ · 已达标 %d 圈", today, appState.todayLap.completedLaps)
+    }
+
+    @ViewBuilder
+    private var metricChips: some View {
+        TodayMetricChip(label: L("约合美元"), value: TokenStepFormat.money(appState.today.displayCost))
+        TodayMetricChip(label: L("活跃小时"), value: "\(appState.todayAgentWork.recordedActiveHours) h")
+        TodayMetricChip(label: L("累计"), value: TokenStepFormat.tokens(appState.snapshot.totals.tokens, compact: true))
+        TodayMetricChip(label: L("达标天"), value: LFormat("%d 天", appState.goalDays))
     }
 }
 
@@ -559,14 +563,18 @@ private struct TodayMetricChip: View {
             Text(label)
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(Color.tokenMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Text(value)
                 .font(.system(size: 15, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.tokenInk)
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.5)
+                .allowsTightening(true)
         }
-        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
         .padding(.vertical, 7)
         .background(Color.tokenTrack.opacity(0.42), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Color.black.opacity(0.04)))

@@ -1004,7 +1004,7 @@ struct TokenStepSettings: Codable {
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
         self.selectedQuotaProvider = selectedQuotaProvider
-        self.cursorDisplayMode = cursorDisplayMode
+        self.cursorDisplayMode = cursorDisplayMode.resolved
         self.kimiDisplayMode = kimiDisplayMode
         self.menuBarRingMode = menuBarRingMode
         self.usageSyncEnabled = usageSyncEnabled
@@ -1060,8 +1060,8 @@ struct TokenStepSettings: Codable {
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
         selectedQuotaProvider = try container.decodeIfPresent(QuotaProviderID.self, forKey: .selectedQuotaProvider)
             ?? defaults.selectedQuotaProvider
-        cursorDisplayMode = try container.decodeIfPresent(CursorDisplayMode.self, forKey: .cursorDisplayMode)
-            ?? defaults.cursorDisplayMode
+        cursorDisplayMode = (try container.decodeIfPresent(CursorDisplayMode.self, forKey: .cursorDisplayMode)
+            ?? defaults.cursorDisplayMode).resolved
         kimiDisplayMode = try container.decodeIfPresent(KimiDisplayMode.self, forKey: .kimiDisplayMode)
             ?? defaults.kimiDisplayMode
         menuBarRingMode = try container.decodeIfPresent(MenuBarRingMode.self, forKey: .menuBarRingMode)
@@ -1092,7 +1092,7 @@ struct TokenStepSettings: Codable {
         try container.encode(language, forKey: .language)
         try container.encodeIfPresent(skippedUpdateVersion, forKey: .skippedUpdateVersion)
         try container.encode(selectedQuotaProvider, forKey: .selectedQuotaProvider)
-        try container.encode(cursorDisplayMode, forKey: .cursorDisplayMode)
+        try container.encode(cursorDisplayMode.resolved, forKey: .cursorDisplayMode)
         try container.encode(kimiDisplayMode, forKey: .kimiDisplayMode)
         try container.encode(menuBarRingMode, forKey: .menuBarRingMode)
         try container.encode(usageSyncEnabled, forKey: .usageSyncEnabled)

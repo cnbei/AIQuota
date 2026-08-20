@@ -57,9 +57,16 @@ enum CursorDisplayMode: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    static var statusBarCases: [CursorDisplayMode] { [.included, .cursorModels, .otherModels] }
+    static var statusBarCases: [CursorDisplayMode] { [.cursorModels, .otherModels] }
 
-    var resolved: CursorDisplayMode { self }
+    var resolved: CursorDisplayMode {
+        switch self {
+        case .included:
+            return .cursorModels
+        case .cursorModels, .otherModels:
+            return self
+        }
+    }
 
     var title: String {
         switch self {
@@ -242,7 +249,7 @@ struct ProviderQuota: Equatable, Identifiable, Codable {
     }
 
     var shouldDisplay: Bool {
-        isAvailable
+        isAvailable || !windows.isEmpty
     }
 
     var cursorOfficialWindows: [QuotaWindow] {
@@ -384,22 +391,14 @@ enum QuotaPresentation {
     ) -> Double? {
         switch quota.provider {
         case .cursor:
-            switch cursorMode {
-            case .included:
-                return quota.metrics?.cursorIncludedUsed
-                    ?? quota.windowUsed(titled: "总体")
-                    ?? quota.metrics?.cursorModelsUsed
-                    ?? quota.windowUsed(kind: .cursorModels)
-                    ?? quota.metrics?.otherModelsUsed
+            switch cursorMode.resolved {
             case .otherModels:
                 return quota.metrics?.otherModelsUsed
                     ?? quota.windowUsed(kind: .otherModels)
-                    ?? quota.metrics?.cursorIncludedUsed
                     ?? quota.metrics?.cursorModelsUsed
-            case .cursorModels:
+            case .cursorModels, .included:
                 return quota.metrics?.cursorModelsUsed
                     ?? quota.windowUsed(kind: .cursorModels)
-                    ?? quota.metrics?.cursorIncludedUsed
                     ?? quota.metrics?.otherModelsUsed
             }
         case .kimi:
@@ -423,6 +422,7 @@ enum QuotaPresentation {
     }
 
     private static func cursorDetail(_ quota: ProviderQuota, mode: CursorDisplayMode) -> String {
+        let mode = mode.resolved
         var parts: [String] = []
         if let spend = quota.metrics?.cursorSpendDollars, let limit = quota.metrics?.cursorLimitDollars, limit > 0 {
             parts.append(String(format: "$%.2f / $%.0f", spend, limit))
@@ -430,11 +430,7 @@ enum QuotaPresentation {
             parts.append(String(format: "$%.2f", spend))
         }
         switch mode {
-        case .included:
-            if let used = quota.metrics?.cursorIncludedUsed {
-                parts.append(String(format: "总体 %.0f%% used", used))
-            }
-        case .cursorModels:
+        case .cursorModels, .included:
             if let used = quota.metrics?.cursorModelsUsed ?? quota.windowUsed(kind: .cursorModels) {
                 parts.append(String(format: "Cursor Models %.0f%% used", used))
             }
@@ -448,9 +444,6 @@ enum QuotaPresentation {
         }
         if mode != .otherModels, let used = quota.metrics?.otherModelsUsed ?? quota.windowUsed(kind: .otherModels) {
             parts.append(String(format: "Other Models %.0f%%", used))
-        }
-        if mode != .included, let used = quota.metrics?.cursorIncludedUsed {
-            parts.append(String(format: "总体 %.0f%%", used))
         }
         if parts.isEmpty, let fallback = quota.detail {
             return fallback

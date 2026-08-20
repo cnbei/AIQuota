@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import sqlite3
 import sys
 import time
@@ -31,7 +32,26 @@ def jwt_fresh(token: str, leeway: int = 300) -> bool:
     return exp - time.time() > leeway
 
 
+def jwt_is_access(token: str) -> bool:
+    parts = token.split(".")
+    if len(parts) != 3:
+        return False
+    payload = parts[1] + "=" * (-len(parts[1]) % 4)
+    try:
+        data = json.loads(base64.urlsafe_b64decode(payload))
+    except (ValueError, json.JSONDecodeError):
+        return False
+    typ = str(data.get("typ") or "").lower()
+    return typ != "refresh"
+
+
 def from_kimi_desktop() -> str | None:
+    if token := from_kimi_desktop_cookies():
+        return token
+    return from_kimi_desktop_local_storage()
+
+
+def from_kimi_desktop_cookies() -> str | None:
     db = Path.home() / "Library/Application Support/kimi-desktop/Cookies"
     if not db.is_file():
         return None
@@ -56,9 +76,43 @@ def from_kimi_desktop() -> str | None:
         con.close()
     for (value,) in rows:
         token = (value or "").strip()
-        if jwt_fresh(token):
+        if jwt_fresh(token) and jwt_is_access(token):
             return token
     return None
+
+
+def from_kimi_desktop_local_storage() -> str | None:
+    roots = [
+        Path.home() / "Library/Application Support/kimi-desktop/Local Storage/leveldb",
+        Path.home() / "Library/Application Support/kimi-desktop/Session Storage",
+    ]
+    jwt_re = re.compile(rb"eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}")
+    best: str | None = None
+    best_exp = 0.0
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in root.iterdir():
+            if path.suffix not in {".log", ".ldb"}:
+                continue
+            try:
+                blob = path.read_bytes()
+            except OSError:
+                continue
+            for raw in jwt_re.findall(blob):
+                token = raw.decode("ascii", "ignore")
+                if not (jwt_fresh(token) and jwt_is_access(token)):
+                    continue
+                parts = token.split(".")
+                payload = parts[1] + "=" * (-len(parts[1]) % 4)
+                try:
+                    exp = json.loads(base64.urlsafe_b64decode(payload)).get("exp") or 0
+                except (ValueError, json.JSONDecodeError):
+                    continue
+                if float(exp) > best_exp:
+                    best_exp = float(exp)
+                    best = token
+    return best
 
 
 def from_browsers() -> str | None:

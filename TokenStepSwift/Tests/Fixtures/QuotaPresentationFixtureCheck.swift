@@ -19,12 +19,14 @@ struct QuotaPresentationFixtureCheck {
                 cursorLimitDollars: 20
             )
         )
-        try assertNear(QuotaPresentation.remainingPercent(quota, cursorMode: .included, kimiMode: .membership), 90)
+        try assertNear(QuotaPresentation.remainingPercent(quota, cursorMode: .included, kimiMode: .membership), 60)
         try assertNear(QuotaPresentation.remainingPercent(quota, cursorMode: .cursorModels, kimiMode: .membership), 60)
         try assertNear(QuotaPresentation.remainingPercent(quota, cursorMode: .otherModels, kimiMode: .membership), 20)
         let cursorDetail = QuotaPresentation.detail(quota, cursorMode: .included, kimiMode: .membership)
         try assertTrue(cursorDetail.contains("$2.40"))
+        try assertTrue(cursorDetail.contains("Cursor Models"))
         try assertTrue(cursorDetail.contains("Other Models"))
+        try assertTrue(!cursorDetail.contains("总体"))
 
         let spendVsPools = ProviderQuota(
             provider: .cursor,
@@ -44,7 +46,7 @@ struct QuotaPresentationFixtureCheck {
         )
         try assertNear(
             QuotaPresentation.remainingPercent(spendVsPools, cursorMode: .included, kimiMode: .membership),
-            89.665
+            98
         )
         try assertNear(
             QuotaPresentation.remainingPercent(spendVsPools, cursorMode: .cursorModels, kimiMode: .membership),

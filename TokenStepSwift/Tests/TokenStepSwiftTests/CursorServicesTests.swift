@@ -68,7 +68,7 @@ final class CursorServicesTests: XCTestCase {
         )
         XCTAssertEqual(
             QuotaPresentation.remainingPercent(quota, cursorMode: .included, kimiMode: .membership),
-            89.665,
+            98,
             accuracy: 0.01
         )
         XCTAssertEqual(
@@ -78,7 +78,9 @@ final class CursorServicesTests: XCTestCase {
         )
         let detail = QuotaPresentation.detail(quota, cursorMode: .included, kimiMode: .membership)
         XCTAssertTrue(detail.contains("$41.34"))
+        XCTAssertTrue(detail.contains("Cursor Models"))
         XCTAssertTrue(detail.contains("Other Models"))
+        XCTAssertFalse(detail.contains("总体"))
     }
 
     func testCursorWindowsParseDashboardPlanUsage() {
@@ -314,6 +316,54 @@ final class CursorServicesTests: XCTestCase {
         XCTAssertEqual(days[0].modelCosts["claude-fable-5-thinking-high"] ?? 0, 2.0, accuracy: 0.0001)
         XCTAssertEqual(days[0].modelCosts["grok-4.6"] ?? 0, 0.32, accuracy: 0.0001)
         XCTAssertEqual(days[0].equivalentCost, 2.32, accuracy: 0.0001)
+    }
+
+    func testOfficialCursorUsageIsASeparateDeviceNotTheLocalMac() {
+        let official = [
+            CursorUsageDay(
+                date: "2026-08-20",
+                totalTokens: 60_000_000,
+                inputTokens: 50_000_000,
+                cachedInputTokens: 0,
+                outputTokens: 10_000_000,
+                cacheWriteTokens: 0,
+                cost: 80,
+                eventCount: 12,
+                models: ["grok-4.6": 60_000_000],
+                hourlyBuckets: [],
+                equivalentCost: 80,
+                modelCosts: ["grok-4.6": 80]
+            )
+        ]
+        let ledger = UsageSnapshot(
+            generatedAt: "2026-08-20T00:00:00Z",
+            timezone: "Asia/Shanghai",
+            totals: UsageTotals(tokens: 1_900_000, cost: 0.4, activeDays: 1),
+            daily: [
+                DailyUsage(
+                    date: "2026-08-20",
+                    tools: ["Codex": 1_900_000, "Cursor": 500_000],
+                    models: ["gpt-5.6-sol": 1_900_000],
+                    totalTokens: 2_400_000,
+                    cost: 0.5
+                )
+            ],
+            tools: [],
+            models: [],
+            sources: [:]
+        )
+
+        let local = CursorUsageService.localDeviceDaily(from: ledger, officialDays: official)
+        XCTAssertEqual(local.count, 1)
+        XCTAssertEqual(local[0].tools["Codex"], 1_900_000)
+        XCTAssertNil(local[0].tools["Cursor"])
+        XCTAssertEqual(local[0].totalTokens, 1_900_000)
+
+        let account = CursorUsageService.accountDeviceDaily(from: official)
+        XCTAssertEqual(account.count, 1)
+        XCTAssertEqual(account[0].tools["Cursor"], 60_000_000)
+        XCTAssertEqual(account[0].totalTokens, 60_000_000)
+        XCTAssertEqual(CursorUsageService.accountDeviceID, "cursor-official")
     }
 
     func testCursorUsageMergeAddsOfficialTokensToRing() {

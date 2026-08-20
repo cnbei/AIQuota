@@ -3,7 +3,7 @@ import XCTest
 @testable import TokenStepSwift
 
 final class QuotaPresentationTests: XCTestCase {
-    func testCursorIncludedModeFollowsSpendPool() {
+    func testCursorIncludedModeFallsBackToCursorModels() {
         let quota = cursorQuota(
             included: 10,
             models: 40,
@@ -13,14 +13,21 @@ final class QuotaPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             QuotaPresentation.remainingPercent(quota, cursorMode: .included, kimiMode: .membership),
-            90,
+            QuotaPresentation.remainingPercent(quota, cursorMode: .cursorModels, kimiMode: .membership),
             accuracy: 0.01
         )
-        let detail = QuotaPresentation.detail(quota, cursorMode: .included, kimiMode: .membership)
+        XCTAssertEqual(
+            QuotaPresentation.remainingPercent(quota, cursorMode: .cursorModels, kimiMode: .membership),
+            60,
+            accuracy: 0.01
+        )
+        let detail = QuotaPresentation.detail(quota, cursorMode: .otherModels, kimiMode: .membership)
         XCTAssertTrue(detail.contains("$2.40"))
-        XCTAssertTrue(detail.contains("总体"))
         XCTAssertTrue(detail.contains("Cursor Models"))
         XCTAssertTrue(detail.contains("Other Models"))
+        XCTAssertFalse(detail.contains("总体"))
+        XCTAssertEqual(CursorDisplayMode.statusBarCases, [.cursorModels, .otherModels])
+        XCTAssertEqual(CursorDisplayMode.included.resolved, .cursorModels)
     }
 
     func testCursorModelsModeSwitchesRingWithoutRefetch() {

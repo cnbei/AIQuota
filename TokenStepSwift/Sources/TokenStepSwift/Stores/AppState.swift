@@ -120,7 +120,24 @@ final class AppState: ObservableObject {
             daily: localHistoryDaily
         )
         let remotes = remoteMachines.map { SyncedMachineLedger(remote: $0) }
-        return [local] + remotes
+        return [local, cursorAccountLedger].compactMap { $0 } + remotes
+    }
+
+    private var cursorAccountLedger: SyncedMachineLedger? {
+        guard settings.cursorQuotaEnabled,
+              let cache = CursorUsageService.readCache()
+        else {
+            return nil
+        }
+        let daily = CursorUsageService.accountDeviceDaily(from: cache.days)
+        guard !daily.isEmpty else { return nil }
+        return SyncedMachineLedger(
+            machineId: CursorUsageService.accountDeviceID,
+            machineName: L("Cursor 账号"),
+            fileSlug: CursorUsageService.accountDeviceID,
+            isLocal: false,
+            daily: daily
+        )
     }
 
     var showsHistoryDeviceChart: Bool {
@@ -214,6 +231,10 @@ final class AppState: ObservableObject {
         showsUsageRecalibrationNotice = DataService.hasPendingUsageRecalibrationNotice
         if loadedSettings.enabledQuotaProviders.isEmpty {
             quotas = [:]
+        } else if loadedSettings.enabledQuotaProviders.contains(.kimi),
+                  quotas[.kimi]?.isAvailable != true,
+                  let cached = KimiQuotaService.readLastCache() {
+            quotas[.kimi] = cached
         }
         if !loadedSettings.cursorCodeSignalEnabled {
             cursorCodeSignal = nil
@@ -341,7 +362,13 @@ final class AppState: ObservableObject {
             }.value
             for provider in providers {
                 if let quota = fetched[provider] {
-                    quotas[provider] = quota
+                    if quota.isAvailable {
+                        quotas[provider] = quota
+                    } else if quotas[provider]?.isAvailable == true {
+                        continue
+                    } else {
+                        quotas[provider] = quota
+                    }
                 } else if quotas[provider]?.isAvailable != true {
                     quotas[provider] = .unavailable(provider)
                 }
@@ -384,7 +411,7 @@ final class AppState: ObservableObject {
     var visibleQuotas: [ProviderQuota] {
         let items = QuotaProviderID.allCases.compactMap { id -> ProviderQuota? in
             guard settings.enabledQuotaProviders.contains(id) else { return nil }
-            guard let quota = quotas[id], quota.isAvailable else { return nil }
+            guard let quota = quotas[id], quota.shouldDisplay else { return nil }
             return quota
         }
         return items.sorted { lhs, rhs in
@@ -583,7 +610,7 @@ final class AppState: ObservableObject {
     }
 
     func setCursorDisplayMode(_ mode: CursorDisplayMode) {
-        settings.cursorDisplayMode = mode
+        settings.cursorDisplayMode = mode.resolved
         saveSettingsAndReload()
     }
 
@@ -1040,7 +1067,10 @@ final class AppState: ObservableObject {
 
     private func applyOverlays() {
         applyCursorOfficialUsageOverlay()
-        localHistoryDaily = snapshot.daily
+        localHistoryDaily = CursorUsageService.localDeviceDaily(
+            from: ledgerSnapshot,
+            officialDays: settings.cursorQuotaEnabled ? (CursorUsageService.readCache()?.days ?? []) : []
+        )
         sanitizeHistoryDeviceFilter()
         guard settings.usageSyncEnabled else { return }
         let remoteDaily = HistoryDevicePresentation.mergedDaily(

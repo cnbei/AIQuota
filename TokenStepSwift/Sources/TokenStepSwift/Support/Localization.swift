@@ -709,6 +709,8 @@ enum TokenStepLocalization {
             "按设备": "By Device",
             "各台电脑累计用量": "Lifetime usage by computer",
             "历史页柱状图按设备分色，可筛选单台电脑看用量。各台电脑会把完整历史天数写入同步仓库。": "History bars are colored by device, and you can filter to one computer. Each Mac uploads its full history window to the sync repo.",
+            "Cursor 账号": "Cursor account",
+            "Cursor 官方用量按账号单独成一列，不记到某一台电脑。": "Official Cursor usage is a separate account column, not assigned to one Mac.",
         ],
         .zhHant: [
             "简体中文": "簡體中文",
@@ -1309,7 +1311,9 @@ enum TokenStepLocalization {
             "柱越高，用量越多；颜色代表设备": "柱越高，用量越多；顏色代表裝置",
             "按设备": "依裝置",
             "各台电脑累计用量": "各台電腦累計用量",
-            "历史页柱状图按设备分色，可筛选单台电脑看用量。各台电脑会把完整历史天数写入同步仓库。": "歷史頁柱狀圖依裝置分色，可篩選單台電腦看用量。各台電腦會把完整歷史天數寫入同步倉庫。"
+            "历史页柱状图按设备分色，可筛选单台电脑看用量。各台电脑会把完整历史天数写入同步仓库。": "歷史頁柱狀圖依裝置分色，可篩選單台電腦看用量。各台電腦會把完整歷史天數寫入同步倉庫。",
+            "Cursor 账号": "Cursor 帳號",
+            "Cursor 官方用量按账号单独成一列，不记到某一台电脑。": "Cursor 官方用量依帳號單獨成一列，不記到某一台電腦。"
         ]
     ]
 }

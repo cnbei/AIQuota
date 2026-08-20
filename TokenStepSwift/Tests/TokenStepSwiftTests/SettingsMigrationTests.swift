@@ -54,17 +54,17 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertEqual(decoded.menuBarRingMode, .quotaRemaining)
     }
 
-    func testCursorIncludedModePersistsAsSpendPool() throws {
+    func testCursorIncludedModeMigratesToCursorModels() throws {
         let json = """
         {"cursor_display_mode": "included"}
         """.data(using: .utf8)!
         let settings = try JSONDecoder().decode(TokenStepSettings.self, from: json)
-        XCTAssertEqual(settings.cursorDisplayMode, .included)
+        XCTAssertEqual(settings.cursorDisplayMode, .cursorModels)
 
         var roundTrip = TokenStepSettings.defaults
         roundTrip.cursorDisplayMode = .included
         let decoded = try JSONDecoder().decode(TokenStepSettings.self, from: JSONEncoder().encode(roundTrip))
-        XCTAssertEqual(decoded.cursorDisplayMode, .included)
+        XCTAssertEqual(decoded.cursorDisplayMode, .cursorModels)
     }
 
     func testCursorFlagStaysInSyncWithProviderSet() {

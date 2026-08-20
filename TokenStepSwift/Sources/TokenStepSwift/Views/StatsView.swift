@@ -16,7 +16,7 @@ struct StatsView: View {
             if appState.showsHistoryDeviceChart, appState.historyDeviceFilter == .all, appState.historyDeviceStats.count > 1 {
                 usageList(
                     title: L("按设备"),
-                    subtitle: L("各台电脑累计用量"),
+                    subtitle: L("Cursor 官方用量按账号单独成一列，不记到某一台电脑。"),
                     rows: appState.historyDeviceStats.map { stat in
                         let title = appState.historyDevices.first(where: { $0.machineId == stat.machineId }).map {
                             HistoryDevicePresentation.displayTitle(for: $0, among: appState.historyDevices)

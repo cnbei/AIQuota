@@ -5,13 +5,26 @@ enum KimiQuotaService {
 
     static func read() throws -> ProviderQuota {
         guard let token = readWebOrOAuthToken() else {
+            if let cached = readLastCache() {
+                return cached
+            }
             throw TokenStepError.message(L("未登录 Kimi"))
         }
-        if let membership = try? readMembership(token: token), membership.isAvailable {
-            return membership
-        }
-        if let recovered = recoverAfterUnauthorized(current: token) {
-            return recovered
+        do {
+            let membership = try readMembership(token: token)
+            if membership.isAvailable {
+                return membership
+            }
+        } catch {
+            if isUnauthorized(error), let recovered = recoverAfterUnauthorized(current: token) {
+                return recovered
+            }
+            if let cached = readLastCache() {
+                return cached
+            }
+            if !isUnauthorized(error) {
+                throw error
+            }
         }
         var lastError: Error = TokenStepError.message(L("Kimi 额度暂不可用"))
         for url in codingEndpoints {
@@ -40,11 +53,28 @@ enum KimiQuotaService {
                 lastError = error
             }
         }
+        if let cached = readLastCache() {
+            return cached
+        }
         throw lastError
     }
 
+    static func readLastCache() -> ProviderQuota? {
+        guard let data = try? Data(contentsOf: AppPaths.kimiQuotaCacheJSON),
+              let cache = try? JSONDecoder().decode(ProviderQuotaCache.self, from: data),
+              cache.quota.isAvailable
+        else {
+            return nil
+        }
+        return cache.quota
+    }
+
+    static func isUnauthorized(_ error: Error) -> Bool {
+        let text = error.localizedDescription
+        return text.contains("401") || text.contains("403")
+    }
+
     private static func recoverAfterUnauthorized(current: String) -> ProviderQuota? {
-        KimiWebAuth.clearStoredToken()
         guard let fresh = KimiWebAuth.importFreshFromBrowsers(), fresh != current else {
             return nil
         }

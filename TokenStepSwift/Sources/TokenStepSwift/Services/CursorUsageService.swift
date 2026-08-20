@@ -117,6 +117,7 @@ struct CursorUsageEvent: Equatable {
 
 enum CursorUsageService {
     static let toolName = "Cursor"
+    static let accountDeviceID = "cursor-official"
     static let maxLookbackDays = 30
     static let maxPages = 20
     static let pageSize = 100
@@ -218,6 +219,30 @@ enum CursorUsageService {
     ) -> [CursorUsageDay] {
         let kept = existing.filter { $0.date < windowStart || $0.date > windowEnd }
         return (kept + incoming).sorted { $0.date < $1.date }
+    }
+
+    static func accountDeviceDaily(from days: [CursorUsageDay]) -> [DailyUsage] {
+        days.compactMap { day in
+            guard day.totalTokens > 0 else { return nil }
+            return DailyUsage(
+                date: day.date,
+                tools: [toolName: day.totalTokens],
+                models: day.models,
+                modelsByTool: [toolName: day.models],
+                totalTokens: day.totalTokens,
+                cost: day.cost,
+                equivalentCost: day.equivalentCost,
+                modelCosts: day.modelCosts,
+                toolCosts: [toolName: day.equivalentCost]
+            )
+        }
+    }
+
+    static func localDeviceDaily(from snapshot: UsageSnapshot, officialDays: [CursorUsageDay]) -> [DailyUsage] {
+        if officialDays.contains(where: { $0.totalTokens > 0 }) {
+            return stripCursor(snapshot).daily
+        }
+        return snapshot.daily
     }
 
     static func merge(_ snapshot: UsageSnapshot, days: [CursorUsageDay]) -> UsageSnapshot {

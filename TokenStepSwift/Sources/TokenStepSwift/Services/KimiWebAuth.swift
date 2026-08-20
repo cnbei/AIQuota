@@ -5,18 +5,24 @@ import SQLite3
 
 enum KimiWebAuth {
     static func resolveToken() -> String? {
-        if let env = ProcessInfo.processInfo.environment["KIMI_AUTH_TOKEN"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           isFresh(env) {
-            return env
+        let stored = [
+            ProcessInfo.processInfo.environment["KIMI_AUTH_TOKEN"],
+            TokenStepSecrets.get(.kimiAccessToken),
+            loadStoredToken()
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty && looksLikeSession($0) }
+
+        if let fresh = stored.first(where: isFresh) {
+            return fresh
         }
-        if let stored = TokenStepSecrets.get(.kimiAccessToken), isFresh(stored) {
-            return stored
+        if let imported = importFreshFromBrowsers() {
+            return imported
         }
-        if let cached = loadStoredToken(), isFresh(cached) {
-            return cached
-        }
-        return importFreshFromBrowsers()
+        // JWT exp is a hint, not the API. Keep the last session so a
+        // stale cookie still reaches GetSubscriptionStats, like the
+        // standalone AIQuota client did.
+        return stored.first
     }
 
     static func importFreshFromBrowsers() -> String? {
@@ -33,7 +39,13 @@ enum KimiWebAuth {
     }
 
     static func isFresh(_ token: String) -> Bool {
-        looksLikeSession(token) && !QuotaAuth.needsRefresh(token)
+        looksLikeSession(token) && isAccessToken(token) && !QuotaAuth.needsRefresh(token)
+    }
+
+    static func isAccessToken(_ token: String) -> Bool {
+        let typ = (QuotaAuth.jwtPayload(token)?["typ"] as? String)?.lowercased()
+        if typ == "refresh" { return false }
+        return typ == "access" || typ == nil
     }
 
     static func saveStoredToken(_ token: String) throws {
@@ -140,6 +152,13 @@ enum KimiWebAuth {
     }
 
     private static func importFromKimiDesktop() -> String? {
+        if let cookie = importFromKimiDesktopCookies(), isFresh(cookie) {
+            return cookie
+        }
+        return importFromKimiDesktopLocalStorage()
+    }
+
+    private static func importFromKimiDesktopCookies() -> String? {
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/kimi-desktop/Cookies")
         guard FileManager.default.isReadableFile(atPath: url.path) else { return nil }
@@ -158,6 +177,58 @@ enum KimiWebAuth {
             return nil
         }
         return queryPlainCookie(dbPath: tmp.path)
+    }
+
+    /// Kimi Desktop keeps a short-lived access JWT in Electron Local Storage
+    /// and often leaves Cookies/kimi-auth stale. Prefer the newest access token.
+    private static func importFromKimiDesktopLocalStorage() -> String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let roots = [
+            home.appendingPathComponent("Library/Application Support/kimi-desktop/Local Storage/leveldb"),
+            home.appendingPathComponent("Library/Application Support/kimi-desktop/Session Storage")
+        ]
+        var best: (token: String, exp: Date)?
+        for root in roots {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: nil
+            ) else { continue }
+            for url in files {
+                let name = url.lastPathComponent
+                guard name.hasSuffix(".log") || name.hasSuffix(".ldb") else { continue }
+                guard let data = try? Data(contentsOf: url) else { continue }
+                for token in jwtTokens(in: data) where isFresh(token) {
+                    guard let exp = QuotaAuth.jwtExp(token) else { continue }
+                    if best == nil || exp > best!.exp {
+                        best = (token, exp)
+                    }
+                }
+            }
+        }
+        return best?.token
+    }
+
+    private static func jwtTokens(in data: Data) -> [String] {
+        guard let text = String(data: data, encoding: .isoLatin1) else { return [] }
+        var result: [String] = []
+        var search = text.startIndex
+        while let range = text.range(of: "eyJ", range: search..<text.endIndex) {
+            var end = range.lowerBound
+            while end < text.endIndex {
+                let character = text[end]
+                if character.isLetter || character.isNumber || character == "-" || character == "_" || character == "." {
+                    end = text.index(after: end)
+                } else {
+                    break
+                }
+            }
+            let token = String(text[range.lowerBound..<end])
+            if token.split(separator: ".").count == 3, looksLikeSession(token) {
+                result.append(token)
+            }
+            search = end
+        }
+        return result
     }
 
     private static func queryPlainCookie(dbPath: String) -> String? {

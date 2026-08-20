@@ -1074,11 +1074,23 @@ final class AppState: ObservableObject {
             var day = dailyByDate[other.date] ?? DailyUsage(date: other.date, tools: [:], totalTokens: 0, cost: 0)
             day.totalTokens += other.totalTokens
             day.cost += other.cost
+            day.equivalentCost += other.equivalentCost
             for (tool, tokens) in other.tools {
                 day.tools[tool, default: 0] += tokens
             }
             for (model, tokens) in other.models {
                 day.models[model, default: 0] += tokens
+            }
+            for (tool, models) in other.modelsByTool {
+                for (model, tokens) in models {
+                    day.modelsByTool[tool, default: [:]][model, default: 0] += tokens
+                }
+            }
+            for (model, cost) in other.modelCosts {
+                day.modelCosts[model, default: 0] += cost
+            }
+            for (tool, cost) in other.toolCosts {
+                day.toolCosts[tool, default: 0] += cost
             }
             dailyByDate[other.date] = day
         }
@@ -1087,7 +1099,7 @@ final class AppState: ObservableObject {
         merged.daily = daily
         merged.totals = UsageTotals(
             tokens: daily.map(\.totalTokens).reduce(0, +),
-            cost: daily.map(\.cost).reduce(0, +),
+            cost: daily.map(\.displayCost).reduce(0, +),
             activeDays: daily.filter { $0.totalTokens > 0 }.count
         )
         return merged

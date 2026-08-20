@@ -2501,8 +2501,12 @@ enum UsageCollector {
                     date: item.date,
                     tools: item.tools,
                     models: item.models,
+                    modelsByTool: item.modelsByTool,
                     totalTokens: item.totalTokens,
-                    cost: rounded(item.cost, digits: 4)
+                    cost: rounded(item.cost, digits: 4),
+                    equivalentCost: rounded(item.cost, digits: 4),
+                    modelCosts: item.modelCosts.mapValues { rounded($0, digits: 4) },
+                    toolCosts: item.toolCosts.mapValues { rounded($0, digits: 4) }
                 )
             }
 
@@ -3205,61 +3209,21 @@ enum UsageCollector {
     }
 
     private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String) -> Double {
-        let lower = model.lowercased()
-        if tool == "Codex", lower.contains("gpt-5.5") {
-            return openAICostByParts(usage: usage, input: 5, cachedInput: 0.5, output: 30)
-        }
-        if tool == "Codex", lower.contains("gpt-5.4") {
-            return openAICostByParts(usage: usage, input: 2.5, cachedInput: 0.25, output: 15)
-        }
-        if lower.contains("opus") {
-            return costByParts(usage: usage, input: 5, output: 25, cacheCreation: 6.25, cacheRead: 0.5)
-        }
-        if lower.contains("sonnet") {
-            return costByParts(usage: usage, input: 3, output: 15, cacheCreation: 3.75, cacheRead: 0.3)
+        if ModelPricing.rate(for: model) != nil {
+            return ModelPricing.cost(
+                model: model,
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                cacheReadTokens: usage.cacheReadInputTokens,
+                cacheWriteTokens: usage.cacheCreationInputTokens,
+                totalTokens: usage.totalTokens,
+                inputIncludesCache: true
+            )
         }
         if tool == "Claude Code" {
             return Double(usage.totalTokens) / 1_000_000 * 3
         }
         return Double(usage.totalTokens) / 1_000_000
-    }
-
-    private static func openAICostByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        cachedInput: Double,
-        output: Double
-    ) -> Double {
-        let cached = max(0, usage.cacheReadInputTokens)
-        let cacheCreation = max(0, usage.cacheCreationInputTokens)
-        let uncachedInput = max(0, usage.inputTokens - cached - cacheCreation)
-        if uncachedInput == 0,
-           cached == 0,
-           cacheCreation == 0,
-           usage.outputTokens == 0,
-           usage.totalTokens > 0 {
-            return Double(usage.totalTokens) / 1_000_000 * input
-        }
-        return Double(uncachedInput + cacheCreation) / 1_000_000 * input
-            + Double(cached) / 1_000_000 * cachedInput
-            + Double(usage.outputTokens) / 1_000_000 * output
-    }
-
-    private static func costByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        output: Double,
-        cacheCreation: Double,
-        cacheRead: Double
-    ) -> Double {
-        let uncachedInput = max(
-            0,
-            usage.inputTokens - usage.cacheCreationInputTokens - usage.cacheReadInputTokens
-        )
-        return Double(uncachedInput) / 1_000_000 * input
-            + Double(usage.outputTokens) / 1_000_000 * output
-            + Double(usage.cacheCreationInputTokens) / 1_000_000 * cacheCreation
-            + Double(usage.cacheReadInputTokens) / 1_000_000 * cacheRead
     }
 
     private static func percent(_ value: Int, of total: Int) -> Double {
@@ -4408,14 +4372,20 @@ private struct DailyAccumulator {
     var date: String
     var tools: [String: Int] = [:]
     var models: [String: Int] = [:]
+    var modelsByTool: [String: [String: Int]] = [:]
     var totalTokens = 0
     var cost = 0.0
+    var modelCosts: [String: Double] = [:]
+    var toolCosts: [String: Double] = [:]
 
     mutating func add(record: UsageRecord, cost: Double) {
         tools[record.tool, default: 0] += record.usage.totalTokens
         models[record.model, default: 0] += record.usage.totalTokens
+        modelsByTool[record.tool, default: [:]][record.model, default: 0] += record.usage.totalTokens
         totalTokens += record.usage.totalTokens
         self.cost += cost
+        modelCosts[record.model, default: 0] += cost
+        toolCosts[record.tool, default: 0] += cost
     }
 }
 

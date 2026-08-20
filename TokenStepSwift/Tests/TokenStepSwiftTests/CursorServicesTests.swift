@@ -272,6 +272,45 @@ final class CursorServicesTests: XCTestCase {
         XCTAssertEqual(days[1].models["grok-4.6"], 14)
     }
 
+    func testCursorUsageEquivalentCostKeepsFableAndGrokSeparate() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        let noon = calendar.date(from: DateComponents(year: 2026, month: 8, day: 20, hour: 12))!
+        let payload: [String: Any] = [
+            "usageEventsDisplay": [
+                [
+                    "timestamp": String(Int(noon.timeIntervalSince1970 * 1000)),
+                    "model": "claude-fable-5-thinking-high",
+                    "chargedCents": 0,
+                    "tokenUsage": [
+                        "inputTokens": 100_000,
+                        "outputTokens": 20_000,
+                        "cacheReadTokens": 0,
+                        "cacheWriteTokens": 0
+                    ]
+                ],
+                [
+                    "timestamp": String(Int(noon.timeIntervalSince1970 * 1000) + 1),
+                    "model": "grok-4.6",
+                    "chargedCents": 0,
+                    "tokenUsage": [
+                        "inputTokens": 100_000,
+                        "outputTokens": 20_000,
+                        "cacheReadTokens": 0,
+                        "cacheWriteTokens": 0
+                    ]
+                ]
+            ]
+        ]
+
+        let days = CursorUsageService.bucket(CursorUsageService.events(from: payload))
+        XCTAssertEqual(days.count, 1)
+        XCTAssertEqual(days[0].cost, 0, accuracy: 0.0001)
+        XCTAssertEqual(days[0].modelCosts["claude-fable-5-thinking-high"] ?? 0, 2.0, accuracy: 0.0001)
+        XCTAssertEqual(days[0].modelCosts["grok-4.6"] ?? 0, 0.32, accuracy: 0.0001)
+        XCTAssertEqual(days[0].equivalentCost, 2.32, accuracy: 0.0001)
+    }
+
     func testCursorUsageMergeAddsOfficialTokensToRing() {
         let ledger = UsageSnapshot(
             generatedAt: "2026-08-17T00:00:00Z",
@@ -316,6 +355,8 @@ final class CursorServicesTests: XCTestCase {
                 cost: 0.10,
                 eventCount: 1,
                 models: ["composer-1": 175],
+                equivalentCost: 0.42,
+                modelCosts: ["composer-1": 0.42],
                 hourlyBuckets: [
                     CursorUsageHourBucket(hour: 15, tokens: 175, inputTokens: 100, cachedInputTokens: 50, outputTokens: 20)
                 ]
@@ -325,6 +366,8 @@ final class CursorServicesTests: XCTestCase {
         let merged = CursorUsageService.merge(ledger, days: days)
         XCTAssertEqual(merged.daily.last?.tools["Cursor"], 175)
         XCTAssertEqual(merged.daily.last?.totalTokens, 1_175)
+        XCTAssertEqual(merged.daily.last?.equivalentCost ?? 0, 0.52, accuracy: 0.0001)
+        XCTAssertEqual(merged.daily.last?.modelCosts["composer-1"] ?? 0, 0.42, accuracy: 0.0001)
         XCTAssertEqual(merged.totals.tokens, 1_175)
         XCTAssertEqual(merged.tools.first(where: { $0.tool == "Cursor" })?.tokens, 175)
         XCTAssertEqual(merged.agentWork.last?.sources.first(where: { $0.source == "Cursor" })?.tokens, 175)

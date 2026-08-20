@@ -197,7 +197,7 @@ struct ShareDailyCardView: View {
             ),
             ShareHeroRow(
                 title: L("消耗金额"),
-                name: TokenStepFormat.money(day.cost),
+                name: TokenStepFormat.money(day.displayCost),
                 value: L("仅供参考")
             )
         ]

@@ -19,6 +19,81 @@ struct CursorUsageDay: Codable, Equatable {
     var eventCount: Int
     var models: [String: Int]
     var hourlyBuckets: [CursorUsageHourBucket]
+    var equivalentCost: Double
+    var modelCosts: [String: Double]
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case totalTokens
+        case inputTokens
+        case cachedInputTokens
+        case outputTokens
+        case cacheWriteTokens
+        case cost
+        case eventCount
+        case models
+        case hourlyBuckets
+        case equivalentCost
+        case modelCosts
+    }
+
+    init(
+        date: String,
+        totalTokens: Int,
+        inputTokens: Int,
+        cachedInputTokens: Int,
+        outputTokens: Int,
+        cacheWriteTokens: Int,
+        cost: Double,
+        eventCount: Int,
+        models: [String: Int],
+        hourlyBuckets: [CursorUsageHourBucket],
+        equivalentCost: Double = 0,
+        modelCosts: [String: Double] = [:]
+    ) {
+        self.date = date
+        self.totalTokens = totalTokens
+        self.inputTokens = inputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.outputTokens = outputTokens
+        self.cacheWriteTokens = cacheWriteTokens
+        self.cost = cost
+        self.eventCount = eventCount
+        self.models = models
+        self.hourlyBuckets = hourlyBuckets
+        self.equivalentCost = equivalentCost
+        self.modelCosts = modelCosts
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        date = try container.decode(String.self, forKey: .date)
+        totalTokens = try container.decode(Int.self, forKey: .totalTokens)
+        inputTokens = try container.decode(Int.self, forKey: .inputTokens)
+        cachedInputTokens = try container.decode(Int.self, forKey: .cachedInputTokens)
+        outputTokens = try container.decode(Int.self, forKey: .outputTokens)
+        cacheWriteTokens = try container.decodeIfPresent(Int.self, forKey: .cacheWriteTokens) ?? 0
+        cost = try container.decode(Double.self, forKey: .cost)
+        eventCount = try container.decode(Int.self, forKey: .eventCount)
+        models = try container.decodeIfPresent([String: Int].self, forKey: .models) ?? [:]
+        hourlyBuckets = try container.decodeIfPresent([CursorUsageHourBucket].self, forKey: .hourlyBuckets) ?? []
+        let decodedEquivalent = try container.decodeIfPresent(Double.self, forKey: .equivalentCost)
+        let decodedModelCosts = try container.decodeIfPresent([String: Double].self, forKey: .modelCosts) ?? [:]
+        if let decodedEquivalent, decodedEquivalent > 0 || !decodedModelCosts.isEmpty {
+            equivalentCost = decodedEquivalent
+            modelCosts = decodedModelCosts
+        } else {
+            modelCosts = Self.estimatedModelCosts(from: models)
+            equivalentCost = decodedEquivalent ?? modelCosts.values.reduce(0, +)
+        }
+    }
+
+    private static func estimatedModelCosts(from models: [String: Int]) -> [String: Double] {
+        Dictionary(uniqueKeysWithValues: models.compactMap { model, tokens in
+            guard tokens > 0 else { return nil }
+            return (model, ModelPricing.cost(model: model, inputTokens: 0, outputTokens: 0, totalTokens: tokens))
+        })
+    }
 }
 
 struct CursorUsageCache: Codable, Equatable {
@@ -149,7 +224,8 @@ enum CursorUsageService {
         let relevantDays = days.filter { $0.totalTokens > 0 || $0.eventCount > 0 }
         guard !relevantDays.isEmpty else { return stripCursor(snapshot) }
 
-        let snapshot = stripCursor(snapshot)
+        let cursorModelNames = Set(relevantDays.flatMap(\.models.keys))
+        let snapshot = stripCursor(snapshot, cursorModelNames: cursorModelNames)
         var dailyByDate = Dictionary(uniqueKeysWithValues: snapshot.daily.map { ($0.date, $0) })
         var workByDate = Dictionary(uniqueKeysWithValues: snapshot.agentWork.map { ($0.date, $0) })
         var rhythmByDate = Dictionary(uniqueKeysWithValues: snapshot.rhythms.map { ($0.date, $0) })
@@ -162,7 +238,7 @@ enum CursorUsageService {
 
         let daily = dailyByDate.values.sorted { $0.date < $1.date }
         let totalTokens = daily.map(\.totalTokens).reduce(0, +)
-        let totalCost = daily.map(\.cost).reduce(0, +)
+        let totalCost = daily.map(\.displayCost).reduce(0, +)
         let cursorTokens = relevantDays.map(\.totalTokens).reduce(0, +)
         let cursorEvents = relevantDays.map(\.eventCount).reduce(0, +)
 
@@ -379,13 +455,30 @@ enum CursorUsageService {
         )
     }
 
-    private static func stripCursor(_ snapshot: UsageSnapshot) -> UsageSnapshot {
+    private static func stripCursor(_ snapshot: UsageSnapshot, cursorModelNames: Set<String> = []) -> UsageSnapshot {
         let daily = snapshot.daily.compactMap { day -> DailyUsage? in
             var day = day
-            guard let cursorTokens = day.tools.removeValue(forKey: toolName) else {
-                return day
+            let cursorTokens = day.tools.removeValue(forKey: toolName) ?? 0
+            let hadCursor = cursorTokens > 0 || day.toolCosts[toolName] != nil
+            if let cursorEquivalent = day.toolCosts.removeValue(forKey: toolName) {
+                day.equivalentCost = max(0, day.equivalentCost - cursorEquivalent)
+            } else if hadCursor {
+                for name in cursorModelNames {
+                    if let modelCost = day.modelCosts[name] {
+                        day.equivalentCost = max(0, day.equivalentCost - modelCost)
+                    }
+                }
             }
-            day.totalTokens = max(0, day.totalTokens - cursorTokens)
+            if hadCursor {
+                day.modelsByTool.removeValue(forKey: toolName)
+                for name in cursorModelNames {
+                    day.models.removeValue(forKey: name)
+                    day.modelCosts.removeValue(forKey: name)
+                }
+            }
+            if cursorTokens > 0 {
+                day.totalTokens = max(0, day.totalTokens - cursorTokens)
+            }
             return day.totalTokens > 0 || !day.tools.isEmpty ? day : nil
         }
         let agentWork = snapshot.agentWork.compactMap { work -> DailyAgentWork? in
@@ -437,12 +530,19 @@ enum CursorUsageService {
 
     private static func applyCursor(to usage: DailyUsage?, day: CursorUsageDay) -> DailyUsage {
         var usage = usage ?? DailyUsage(date: day.date, tools: [:], totalTokens: 0, cost: 0)
+        let previousCursorCost = usage.toolCosts[toolName] ?? 0
         usage.tools[toolName] = day.totalTokens
+        usage.toolCosts[toolName] = day.equivalentCost
+        usage.modelsByTool[toolName] = day.models
         for (model, tokens) in day.models {
-            usage.models[model, default: 0] += tokens
+            usage.models[model] = tokens
+            if let modelCost = day.modelCosts[model] {
+                usage.modelCosts[model] = modelCost
+            }
         }
         usage.totalTokens += day.totalTokens
         usage.cost += day.cost
+        usage.equivalentCost = max(0, usage.equivalentCost - previousCursorCost) + day.equivalentCost
         return usage
     }
 
@@ -600,6 +700,7 @@ private struct DayAccumulator {
     var chargedCents = 0.0
     var eventCount = 0
     var models: [String: Int] = [:]
+    var modelParts: [String: ModelTokenParts] = [:]
     var hourly: [Int: HourAccumulator] = [:]
 
     mutating func add(_ event: CursorUsageEvent) {
@@ -610,6 +711,7 @@ private struct DayAccumulator {
         chargedCents += event.chargedCents
         eventCount += 1
         models[event.model, default: 0] += event.totalTokens
+        modelParts[event.model, default: ModelTokenParts()].add(event)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
         let hour = calendar.component(.hour, from: event.timestamp)
@@ -617,7 +719,10 @@ private struct DayAccumulator {
     }
 
     var day: CursorUsageDay {
-        CursorUsageDay(
+        let modelCosts = Dictionary(uniqueKeysWithValues: modelParts.map { model, parts in
+            (model, parts.equivalentCost(model: model))
+        })
+        return CursorUsageDay(
             date: date,
             totalTokens: inputTokens + outputTokens + cachedInputTokens + cacheWriteTokens,
             inputTokens: inputTokens,
@@ -627,7 +732,36 @@ private struct DayAccumulator {
             cost: (chargedCents / 100 * 10_000).rounded() / 10_000,
             eventCount: eventCount,
             models: models,
-            hourlyBuckets: hourly.values.sorted { $0.hour < $1.hour }.map(\.bucket)
+            hourlyBuckets: hourly.values.sorted { $0.hour < $1.hour }.map(\.bucket),
+            equivalentCost: (modelCosts.values.reduce(0, +) * 10_000).rounded() / 10_000,
+            modelCosts: modelCosts.mapValues { ($0 * 10_000).rounded() / 10_000 }
+        )
+    }
+}
+
+private struct ModelTokenParts {
+    var inputTokens = 0
+    var cachedInputTokens = 0
+    var outputTokens = 0
+    var cacheWriteTokens = 0
+    var tokens = 0
+
+    mutating func add(_ event: CursorUsageEvent) {
+        inputTokens += event.inputTokens
+        cachedInputTokens += event.cacheReadTokens
+        outputTokens += event.outputTokens
+        cacheWriteTokens += event.cacheWriteTokens
+        tokens += event.totalTokens
+    }
+
+    func equivalentCost(model: String) -> Double {
+        ModelPricing.cost(
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheReadTokens: cachedInputTokens,
+            cacheWriteTokens: cacheWriteTokens,
+            totalTokens: tokens
         )
     }
 }

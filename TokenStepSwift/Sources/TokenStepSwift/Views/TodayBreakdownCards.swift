@@ -57,6 +57,8 @@ struct TodayBreakdownRow: Identifiable {
     var tokens: Int
     var percent: Double
     var color: Color?
+    var cost: Double = 0
+    var models: [TodayModelCostRow] = []
 }
 
 private struct TodayBreakdownRowView: View {

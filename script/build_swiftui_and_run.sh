@@ -97,6 +97,7 @@ HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Support/SQLiteReadonly.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/QuotaModels.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Models/ModelPricing.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"
   "$SWIFT_DIR/Sources/TokenStepHelper/main.swift"

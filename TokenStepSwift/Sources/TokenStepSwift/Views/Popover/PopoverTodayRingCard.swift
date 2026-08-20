@@ -36,7 +36,7 @@ struct PopoverTodayRingCard: View {
                 Text(lap.lapStatusText)
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(Color.tokenInk)
-                Text(TokenStepFormat.money(appState.today.cost))
+                Text(TokenStepFormat.money(appState.today.displayCost))
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
                 Text(L("圈数进度，颜色不按来源分段"))

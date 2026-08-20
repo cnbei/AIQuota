@@ -118,7 +118,7 @@ enum HistoryDevicePresentation {
         let active = daily.filter { $0.totalTokens > 0 }
         return UsageTotals(
             tokens: active.map(\.totalTokens).reduce(0, +),
-            cost: active.map(\.cost).reduce(0, +),
+            cost: active.map(\.displayCost).reduce(0, +),
             activeDays: active.count
         )
     }
@@ -154,7 +154,7 @@ enum HistoryDevicePresentation {
             machine.daily.filter { $0.totalTokens > 0 }.map(\.totalTokens).reduce(0, +)
         }
         let costTotals = machines.map { machine in
-            machine.daily.filter { $0.totalTokens > 0 }.map(\.cost).reduce(0, +)
+            machine.daily.filter { $0.totalTokens > 0 }.map(\.displayCost).reduce(0, +)
         }
         let grand = max(tokenTotals.reduce(0, +), 1)
         return zip(machines, zip(tokenTotals, costTotals)).map { machine, pair in
@@ -192,7 +192,7 @@ enum HistoryDevicePresentation {
                     tokens: tokens
                 )
             }
-            let cost = selected.reduce(0.0) { $0 + (lookup[$1.machineId]?[date]?.cost ?? 0) }
+            let cost = selected.reduce(0.0) { $0 + (lookup[$1.machineId]?[date]?.displayCost ?? 0) }
             return DailyDeviceBar(
                 date: date,
                 totalTokens: slices.map(\.tokens).reduce(0, +),
@@ -234,11 +234,23 @@ enum HistoryDevicePresentation {
         guard var result = existing else { return incoming }
         result.totalTokens += incoming.totalTokens
         result.cost += incoming.cost
+        result.equivalentCost += incoming.equivalentCost
         for (tool, tokens) in incoming.tools {
             result.tools[tool, default: 0] += tokens
         }
         for (model, tokens) in incoming.models {
             result.models[model, default: 0] += tokens
+        }
+        for (tool, models) in incoming.modelsByTool {
+            for (model, tokens) in models {
+                result.modelsByTool[tool, default: [:]][model, default: 0] += tokens
+            }
+        }
+        for (model, cost) in incoming.modelCosts {
+            result.modelCosts[model, default: 0] += cost
+        }
+        for (tool, cost) in incoming.toolCosts {
+            result.toolCosts[tool, default: 0] += cost
         }
         return result
     }

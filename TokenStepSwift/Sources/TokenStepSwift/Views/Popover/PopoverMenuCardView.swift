@@ -222,7 +222,7 @@ struct PopoverMenuCardView: View {
                     .font(.caption)
                     .foregroundStyle(Color.tokenMuted)
                 Spacer()
-                Text(TokenStepFormat.money(appState.today.cost))
+                Text(TokenStepFormat.money(appState.today.displayCost))
                     .font(.caption)
                     .foregroundStyle(Color.tokenMuted)
             }

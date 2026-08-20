@@ -64,6 +64,17 @@ final class HistoryDevicePresentationTests: XCTestCase {
         XCTAssertEqual(tools.first?.tokens, 20)
     }
 
+    func testDetailPagingLoadsTheNextPageWithoutReturningEverything() {
+        let rows = (0..<90).map { day("2026-08-\(String(format: "%02d", ($0 % 28) + 1))-\($0)", tokens: $0 + 1, tool: "Codex") }
+        let first = HistoryDetailPaging.displayed(rows, loadedCount: HistoryDetailPaging.pageSize)
+        XCTAssertEqual(first.count, 40)
+        XCTAssertEqual(first.first?.totalTokens, 1)
+        let next = HistoryDetailPaging.advance(loadedCount: first.count, total: rows.count)
+        XCTAssertEqual(next, 80)
+        XCTAssertEqual(HistoryDetailPaging.displayed(rows, loadedCount: next).count, 80)
+        XCTAssertEqual(HistoryDetailPaging.advance(loadedCount: 80, total: rows.count), 90)
+    }
+
     func testLocalMachineUsesSentinelColorIndex() {
         XCTAssertEqual(HistoryDevicePresentation.colorIndex(for: "air", isLocal: true), -1)
         XCTAssertGreaterThanOrEqual(HistoryDevicePresentation.colorIndex(for: "mini", isLocal: false), 0)

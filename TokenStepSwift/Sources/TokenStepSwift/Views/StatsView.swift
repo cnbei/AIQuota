@@ -141,7 +141,7 @@ private struct StatHeroMetric: View {
 
     var body: some View {
         TokenCard {
-            VStack(alignment: .leading, spacing: 15) {
+            VStack(alignment: .leading, spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color.tokenMint.opacity(0.24))

@@ -37,6 +37,14 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(fast, 16.0, accuracy: 0.0001)
     }
 
+    func testGrokFastDisplayNamesKeepXHighDistinct() {
+        XCTAssertEqual(ModelPricing.displayName(for: "cursor-grok-4.6-xhigh-fast"), "Grok 4.6 Fast xHigh")
+        XCTAssertEqual(ModelPricing.displayName(for: "cursor-grok-4.6-high-fast"), "Grok 4.6 Fast High")
+        XCTAssertEqual(ModelPricing.displayName(for: "cursor-grok-4.6-medium-fast"), "Grok 4.6 Fast Medium")
+        XCTAssertEqual(ModelPricing.displayName(for: "grok-4.6-fast"), "Grok 4.6 Fast")
+        XCTAssertEqual(ModelPricing.displayName(for: "grok-4.6"), "Grok 4.6")
+    }
+
     func testUnknownModelFallsBackToOneDollarPerMillionTokens() {
         XCTAssertEqual(
             ModelPricing.cost(model: "mystery-bot", inputTokens: 0, outputTokens: 0, totalTokens: 2_000_000),

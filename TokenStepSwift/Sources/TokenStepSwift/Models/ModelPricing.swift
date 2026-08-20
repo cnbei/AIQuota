@@ -67,8 +67,12 @@ enum ModelPricing {
     static func displayName(for model: String) -> String {
         let key = normalize(model)
         if key.contains("fable-5") || key.contains("fable5") { return "Fable 5" }
-        if key.contains("grok-4.6") || key.contains("grok-4-6") { return key.contains("fast") ? "Grok 4.6 Fast" : "Grok 4.6" }
-        if key.contains("grok-4.5") || key.contains("grok-4-5") { return key.contains("fast") ? "Grok 4.5 Fast" : "Grok 4.5" }
+        if key.contains("grok-4.6") || key.contains("grok-4-6") {
+            return grokDisplayName(version: "4.6", key: key)
+        }
+        if key.contains("grok-4.5") || key.contains("grok-4-5") {
+            return grokDisplayName(version: "4.5", key: key)
+        }
         if key.contains("composer-2.5") || key.contains("composer-2-5") {
             return key.contains("fast") ? "Composer 2.5 Fast" : "Composer 2.5"
         }
@@ -177,6 +181,27 @@ enum ModelPricing {
         if key.contains("kimi") {
             return ModelTokenRate(input: 0.95, output: 4, cacheRead: 0.19, cacheWrite: 0.95)
         }
+        return nil
+    }
+
+    private static func grokDisplayName(version: String, key: String) -> String {
+        var parts = ["Grok", version]
+        if key.contains("fast") {
+            parts.append("Fast")
+        }
+        if let effort = thinkingEffort(in: key) {
+            parts.append(effort)
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private static func thinkingEffort(in key: String) -> String? {
+        if key.contains("xhigh") || key.contains("x-high") || key.contains("extra-high") {
+            return "xHigh"
+        }
+        if key.contains("high") { return "High" }
+        if key.contains("medium") { return "Medium" }
+        if key.contains("low") { return "Low" }
         return nil
     }
 

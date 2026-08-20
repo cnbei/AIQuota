@@ -95,6 +95,23 @@ final class TodaySourceRowsTests: XCTestCase {
         XCTAssertEqual(rows[0].percent + rows[1].percent, 100, accuracy: 0.01)
     }
 
+    func testCursorGrokFastVariantsStayDistinctRows() {
+        let rows = TodaySourceRows.make(
+            tools: ["Cursor": 90_000_000],
+            modelsByTool: [
+                "Cursor": [
+                    "cursor-grok-4.6-xhigh-fast": 73_700_000,
+                    "cursor-grok-4.6-high-fast": 16_580_000
+                ]
+            ]
+        )
+        let names = rows.first?.models.map(\.name) ?? []
+        let ids = rows.first?.models.map(\.id) ?? []
+        XCTAssertEqual(names, ["Grok 4.6 Fast xHigh", "Grok 4.6 Fast High"])
+        XCTAssertEqual(Set(ids).count, 2)
+        XCTAssertEqual(rows.first?.models.map(\.tokens), [73_700_000, 16_580_000])
+    }
+
     func testModelCostRowsEstimateFromListPriceWhenCostsAreMissing() {
         let rows = TodayModelCostRows.make(
             models: ["grok-4.6": 1_000_000],

@@ -728,6 +728,8 @@ struct ContributionWallView: View {
     var goal: Int
     var weeks: Int = 34
 
+    private let cellSpacing: CGFloat = 4
+
     private var rowByDate: [String: DailyUsage] {
         Dictionary(uniqueKeysWithValues: rows.map { ($0.date, $0) })
     }
@@ -739,25 +741,37 @@ struct ContributionWallView: View {
         let weekday = calendar.component(.weekday, from: rawStart)
         let mondayOffset = (weekday + 5) % 7
         let start = calendar.date(byAdding: .day, value: -mondayOffset, to: rawStart) ?? rawStart
+        let monthWeeks = visibleMonthWeeks(start: start, calendar: calendar)
 
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 5) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: cellSpacing) {
                 ForEach(0..<weeks, id: \.self) { week in
-                    let firstDay = calendar.date(byAdding: .day, value: week * 7, to: start) ?? today
-                    let showMonth = week == 0 || calendar.component(.month, from: firstDay) != calendar.component(.month, from: calendar.date(byAdding: .day, value: -7, to: firstDay) ?? firstDay)
-                    VStack(spacing: 5) {
-                        Text(showMonth ? monthLabel(firstDay) : " ")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(Color.tokenMuted)
-                            .frame(width: 15, alignment: .leading)
-                            .lineLimit(1)
+                    Color.clear
+                        .frame(height: 16)
+                        .frame(maxWidth: .infinity)
+                        .overlay(alignment: .leading) {
+                            if let firstDay = monthWeeks[week] {
+                                Text(monthLabel(firstDay))
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color.tokenMuted)
+                                    .lineLimit(1)
+                                    .fixedSize()
+                            }
+                        }
+                }
+            }
+
+            HStack(alignment: .top, spacing: cellSpacing) {
+                ForEach(0..<weeks, id: \.self) { week in
+                    VStack(spacing: cellSpacing) {
                         ForEach(0..<7, id: \.self) { dayIndex in
                             let day = calendar.date(byAdding: .day, value: week * 7 + dayIndex, to: start) ?? today
                             let key = DateFormatter.tokenStepDay.string(from: day)
                             let usage = rowByDate[key]
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(day > today ? Color.clear : contributionColor(tokens: usage?.totalTokens ?? 0, goal: goal))
-                                .frame(width: 15, height: 15)
+                                .aspectRatio(1, contentMode: .fit)
+                                .frame(maxWidth: .infinity)
                                 .overlay {
                                     if calendar.isDate(day, inSameDayAs: today) {
                                         RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -767,6 +781,7 @@ struct ContributionWallView: View {
                                 .help(day > today ? "" : cellHelp(date: key, usage: usage))
                         }
                     }
+                    .frame(maxWidth: .infinity)
                 }
             }
 
@@ -781,13 +796,29 @@ struct ContributionWallView: View {
                 ForEach([0, Int(Double(goal) * 0.25), Int(Double(goal) * 0.7), goal, goal * 2, goal * 3], id: \.self) { value in
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(contributionColor(tokens: value, goal: goal))
-                        .frame(width: 15, height: 15)
+                        .frame(width: 13, height: 13)
                 }
                 Text(L("多"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.tokenMuted)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func visibleMonthWeeks(start: Date, calendar: Calendar) -> [Int: Date] {
+        var labels: [Int: Date] = [:]
+        var lastShownWeek = -3
+        for week in 0..<weeks {
+            let firstDay = calendar.date(byAdding: .day, value: week * 7, to: start) ?? start
+            let previous = calendar.date(byAdding: .day, value: -7, to: firstDay) ?? firstDay
+            let isNewMonth = week == 0
+                || calendar.component(.month, from: firstDay) != calendar.component(.month, from: previous)
+            guard isNewMonth, week - lastShownWeek >= 2 else { continue }
+            labels[week] = firstDay
+            lastShownWeek = week
+        }
+        return labels
     }
 
     private func localizedDays(_ count: Int) -> String {

@@ -255,3 +255,15 @@ enum HistoryDevicePresentation {
         return result
     }
 }
+
+enum HistoryDetailPaging {
+    static let pageSize = 40
+
+    static func displayed(_ rows: [DailyUsage], loadedCount: Int) -> [DailyUsage] {
+        Array(rows.prefix(max(0, loadedCount)))
+    }
+
+    static func advance(loadedCount: Int, total: Int, pageSize: Int = pageSize) -> Int {
+        min(max(0, total), max(0, loadedCount) + pageSize)
+    }
+}

@@ -373,6 +373,7 @@ enum TodayModelCostRows {
         let rest = Array(ranked.dropFirst(maxNamed))
         var rows = named.enumerated().map { index, entry in
             TodayModelCostRow(
+                model: entry.model,
                 name: ModelPricing.displayName(for: entry.model),
                 tokens: entry.tokens,
                 cost: entry.cost,
@@ -385,6 +386,7 @@ enum TodayModelCostRows {
             let cost = rest.map(\.cost).reduce(0, +)
             rows.append(
                 TodayModelCostRow(
+                    model: rest.map(\.model).sorted().joined(separator: ","),
                     name: LFormat("其他 %d 个模型", rest.count),
                     tokens: tokens,
                     cost: cost,
@@ -398,12 +400,14 @@ enum TodayModelCostRows {
 }
 
 struct TodayModelCostRow: Identifiable {
-    var id: String { name }
+    var model: String
     var name: String
     var tokens: Int
     var cost: Double
     var percent: Double
     var color: Color?
+
+    var id: String { model.isEmpty ? name : model }
 }
 
 private func tokenModelColor(index: Int) -> Color {
@@ -527,6 +531,7 @@ enum TodaySourceRows {
         let rest = Array(ranked.dropFirst(maxNamed))
         var rows = named.map { entry in
             TodayModelCostRow(
+                model: entry.model,
                 name: ModelPricing.displayName(for: entry.model),
                 tokens: entry.tokens,
                 cost: entry.cost,
@@ -536,6 +541,7 @@ enum TodaySourceRows {
         if !rest.isEmpty {
             rows.append(
                 TodayModelCostRow(
+                    model: rest.map(\.model).sorted().joined(separator: ","),
                     name: LFormat("其他 %d 个模型", rest.count),
                     tokens: rest.map(\.tokens).reduce(0, +),
                     cost: rest.map(\.cost).reduce(0, +),

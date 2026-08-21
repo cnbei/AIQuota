@@ -101,7 +101,7 @@ final class SettingsMigrationTests: XCTestCase {
     func testRoundTripKeepsSubscriptionPlansAndTightestQuota() throws {
         var settings = TokenStepSettings.defaults
         settings.menuBarRingMode = .tightestQuota
-        settings.upsertSubscription(provider: .cursor, monthlyPrice: 20, renewalDay: 12)
+        settings.upsertSubscription(provider: .cursor, monthlyPrice: 20, renewalDay: 12, currency: .cny)
         settings.upsertSubscription(provider: .kimi, monthlyPrice: 0)
         let decoded = try JSONDecoder().decode(TokenStepSettings.self, from: JSONEncoder().encode(settings))
         XCTAssertEqual(decoded.menuBarRingMode, .tightestQuota)
@@ -109,5 +109,6 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertEqual(decoded.subscriptionPlans.first?.provider, .cursor)
         XCTAssertEqual(decoded.subscriptionPlans.first?.monthlyPrice, 20)
         XCTAssertEqual(decoded.subscriptionPlans.first?.renewalDay, 12)
+        XCTAssertEqual(decoded.subscriptionPlans.first?.currency, .cny)
     }
 }

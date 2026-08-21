@@ -37,7 +37,8 @@ final class SubscriptionAndProbeTests: XCTestCase {
             now: date("2026-08-21")
         )
         XCTAssertEqual(summary.estimatedCostUSD, 4, accuracy: 0.000_1)
-        XCTAssertEqual(summary.planTotalUSD, 40, accuracy: 0.000_1)
+        XCTAssertEqual(summary.planAmount, 40, accuracy: 0.000_1)
+        XCTAssertEqual(summary.currency, .usd)
         XCTAssertEqual(summary.planCount, 2)
         XCTAssertEqual(try XCTUnwrap(summary.ratio), 0.1, accuracy: 0.000_1)
 
@@ -48,6 +49,49 @@ final class SubscriptionAndProbeTests: XCTestCase {
             now: date("2026-08-21")
         )
         XCTAssertEqual(try XCTUnwrap(cursor?.estimatedCostUSD), 1.5, accuracy: 0.000_1)
+    }
+
+    func testCNYPlanConvertsEstimateWithFixedRate() {
+        let snapshot = UsageSnapshot(
+            generatedAt: "2026-08-21T00:00:00Z",
+            timezone: "Asia/Shanghai",
+            totals: UsageTotals(tokens: 10, cost: 4, activeDays: 1),
+            daily: [
+                DailyUsage(
+                    date: "2026-08-10",
+                    tools: ["Kimi Code": 10],
+                    totalTokens: 10,
+                    cost: 4,
+                    toolCosts: ["Kimi Code": 4]
+                )
+            ],
+            tools: [],
+            models: [],
+            sources: [:]
+        )
+        let summary = SubscriptionLedger.providerSummary(
+            provider: .kimi,
+            plans: [SubscriptionPlan(provider: .kimi, monthlyPrice: 199, renewalDay: 1, currency: .cny)],
+            snapshot: snapshot,
+            now: date("2026-08-21")
+        )
+        XCTAssertEqual(try XCTUnwrap(summary?.currency), .cny)
+        XCTAssertEqual(try XCTUnwrap(summary?.planAmount), 199, accuracy: 0.000_1)
+        XCTAssertEqual(
+            try XCTUnwrap(summary?.ratio),
+            (4 * SubscriptionLedger.usdToCny) / 199,
+            accuracy: 0.000_1
+        )
+        XCTAssertTrue(try XCTUnwrap(summary?.estimatedText).contains("¥"))
+    }
+
+    func testLegacySubscriptionJSONDefaultsToUSD() throws {
+        let json = """
+        {"provider":"cursor","monthly_price":20,"renewal_day":8}
+        """.data(using: .utf8)!
+        let plan = try JSONDecoder().decode(SubscriptionPlan.self, from: json)
+        XCTAssertEqual(plan.currency, .usd)
+        XCTAssertEqual(plan.monthlyPrice, 20)
     }
 
     func testKimiCodeCollectorReadsUsageRecordOnly() throws {

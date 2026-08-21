@@ -1128,11 +1128,25 @@ struct TokenStepSettings: Codable {
         subscriptionPlans.first { $0.provider == provider }
     }
 
-    mutating func upsertSubscription(provider: QuotaProviderID, monthlyPrice: Double, renewalDay: Int? = nil) {
-        let day = renewalDay ?? subscriptionPlan(for: provider)?.renewalDay ?? 1
+    mutating func upsertSubscription(
+        provider: QuotaProviderID,
+        monthlyPrice: Double,
+        renewalDay: Int? = nil,
+        currency: SubscriptionCurrency? = nil
+    ) {
+        let existing = subscriptionPlan(for: provider)
+        let day = renewalDay ?? existing?.renewalDay ?? 1
+        let resolvedCurrency = currency ?? existing?.currency ?? .usd
         var plans = subscriptionPlans.filter { $0.provider != provider }
         if monthlyPrice > 0 {
-            plans.append(SubscriptionPlan(provider: provider, monthlyPrice: monthlyPrice, renewalDay: day))
+            plans.append(
+                SubscriptionPlan(
+                    provider: provider,
+                    monthlyPrice: monthlyPrice,
+                    renewalDay: day,
+                    currency: resolvedCurrency
+                )
+            )
         }
         subscriptionPlans = SubscriptionPlan.normalized(plans)
     }

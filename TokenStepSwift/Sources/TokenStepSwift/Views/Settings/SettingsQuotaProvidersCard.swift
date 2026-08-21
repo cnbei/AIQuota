@@ -22,7 +22,7 @@ struct SettingsQuotaProvidersPane: View {
 
             SettingsSectionCard(
                 title: L("订阅账本"),
-                subtitle: L("手填每月真实花费，用来对比本月估算用量。只存在本机，不随用量同步。")
+                subtitle: L("手填每月真实花费，美元或人民币都行。人民币按固定约合汇率，不联网。只存在本机。")
             ) {
                 VStack(spacing: 0) {
                     ForEach(QuotaProviderID.allCases) { provider in
@@ -89,11 +89,18 @@ struct SettingsSubscriptionPlanRow: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
                 .multilineTextAlignment(.trailing)
-                .frame(width: 72)
+                .frame(width: 64)
                 .onSubmit { commitPrice() }
-            Text(L("美元/月"))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                ForEach(SubscriptionCurrency.allCases) { currency in
+                    SettingsPickerChip(
+                        title: currency.title,
+                        selected: selectedCurrency == currency
+                    ) {
+                        appState.setSubscriptionCurrency(provider, currency: currency)
+                    }
+                }
+            }
             TextField("1", text: $dayText)
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
@@ -126,6 +133,10 @@ struct SettingsSubscriptionPlanRow: View {
             priceText = ""
         }
         dayText = "\(plan?.renewalDay ?? 1)"
+    }
+
+    private var selectedCurrency: SubscriptionCurrency {
+        appState.settings.subscriptionPlan(for: provider)?.currency ?? .usd
     }
 
     private func commitPrice() {

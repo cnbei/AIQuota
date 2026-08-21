@@ -110,7 +110,7 @@ struct PopoverMenuCardView: View {
                     }
                 }
                 if let summary = appState.subscriptionSummary(for: quota.provider) {
-                    Text(LFormat("本月估算 %@ · 套餐 %@", TokenStepFormat.money(summary.estimatedCostUSD), TokenStepFormat.money(summary.planTotalUSD)))
+                    Text(LFormat("本月估算 %@ · 套餐 %@", summary.estimatedText, summary.planText))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.tokenMuted)
                 }

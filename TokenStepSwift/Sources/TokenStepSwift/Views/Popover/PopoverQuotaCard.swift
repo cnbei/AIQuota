@@ -55,7 +55,7 @@ struct PopoverQuotaCard: View {
                         .foregroundStyle(.tertiary)
                 }
                 if let summary = appState.subscriptionSummary(for: quota.provider) {
-                    Text(LFormat("本月估算 %@ · 套餐 %@", TokenStepFormat.money(summary.estimatedCostUSD), TokenStepFormat.money(summary.planTotalUSD)))
+                    Text(LFormat("本月估算 %@ · 套餐 %@", summary.estimatedText, summary.planText))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }

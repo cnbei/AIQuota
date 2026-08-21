@@ -30,13 +30,20 @@ enum TokenStepFormat {
         return "\(value)"
     }
 
-    static func money(_ value: Double) -> String {
+    static func money(_ value: Double, currency: SubscriptionCurrency = .usd) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.currencySymbol = "$"
         formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: value)) ?? "$0.00"
+        switch currency {
+        case .usd:
+            formatter.currencyCode = "USD"
+            formatter.currencySymbol = "$"
+            return formatter.string(from: NSNumber(value: value)) ?? "$0.00"
+        case .cny:
+            formatter.currencyCode = "CNY"
+            formatter.currencySymbol = "¥"
+            return formatter.string(from: NSNumber(value: value)) ?? "¥0.00"
+        }
     }
 
     static func percent(_ value: Double) -> String {

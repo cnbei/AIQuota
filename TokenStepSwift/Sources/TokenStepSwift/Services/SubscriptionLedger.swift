@@ -2,22 +2,57 @@ import Foundation
 
 struct SubscriptionMonthSummary: Equatable, Sendable {
     var estimatedCostUSD: Double
-    var planTotalUSD: Double
+    var planAmount: Double
+    var currency: SubscriptionCurrency
     var planCount: Int
     var ratio: Double?
+    var mixedPlanLabel: String? = nil
+
+    var estimatedText: String {
+        TokenStepFormat.money(
+            SubscriptionLedger.convert(usd: estimatedCostUSD, to: currency),
+            currency: currency
+        )
+    }
+
+    var planText: String {
+        if let mixedPlanLabel, !mixedPlanLabel.isEmpty {
+            return mixedPlanLabel
+        }
+        return TokenStepFormat.money(planAmount, currency: currency)
+    }
 
     var headline: String {
         guard planCount > 0 else { return "" }
-        let estimate = TokenStepFormat.money(estimatedCostUSD)
-        let plan = TokenStepFormat.money(planTotalUSD)
-        if let ratio {
-            return String(format: "%@ · %@ · %.2f×", estimate, plan, ratio)
+        if let ratio, mixedPlanLabel == nil {
+            return String(format: "%@ · %@ · %.2f×", estimatedText, planText, ratio)
         }
-        return "\(estimate) · \(plan)"
+        return "\(estimatedText) · \(planText)"
     }
 }
 
 enum SubscriptionLedger {
+    /// 手填人民币时，把本机美元估算约合成人民币。不联网、不随行情变。
+    static let usdToCny = 7.2
+
+    static func convert(usd: Double, to currency: SubscriptionCurrency) -> Double {
+        switch currency {
+        case .usd:
+            return usd
+        case .cny:
+            return usd * usdToCny
+        }
+    }
+
+    static func convertToUSD(amount: Double, currency: SubscriptionCurrency) -> Double {
+        switch currency {
+        case .usd:
+            return amount
+        case .cny:
+            return amount / usdToCny
+        }
+    }
+
     static func monthPrefix(
         now: Date,
         timeZone: TimeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
@@ -69,13 +104,33 @@ enum SubscriptionLedger {
     ) -> SubscriptionMonthSummary {
         let prefix = monthPrefix(now: now)
         let active = SubscriptionPlan.normalized(plans)
-        let planTotal = active.reduce(0) { $0 + $1.monthlyPrice }
         let estimated = estimatedCost(in: snapshot, monthPrefix: prefix)
+        let currencies = Set(active.map(\.currency))
+        if currencies.count <= 1 {
+            let currency = active.first?.currency ?? .usd
+            let planTotal = active.reduce(0) { $0 + $1.monthlyPrice }
+            return SubscriptionMonthSummary(
+                estimatedCostUSD: estimated,
+                planAmount: planTotal,
+                currency: currency,
+                planCount: active.count,
+                ratio: planTotal > 0 ? convert(usd: estimated, to: currency) / planTotal : nil
+            )
+        }
+
+        let parts = SubscriptionCurrency.allCases.compactMap { currency -> String? in
+            let total = active.filter { $0.currency == currency }.reduce(0) { $0 + $1.monthlyPrice }
+            guard total > 0 else { return nil }
+            return TokenStepFormat.money(total, currency: currency)
+        }
+        let planTotalUSD = active.reduce(0) { $0 + convertToUSD(amount: $1.monthlyPrice, currency: $1.currency) }
         return SubscriptionMonthSummary(
             estimatedCostUSD: estimated,
-            planTotalUSD: planTotal,
+            planAmount: planTotalUSD,
+            currency: .usd,
             planCount: active.count,
-            ratio: planTotal > 0 ? estimated / planTotal : nil
+            ratio: planTotalUSD > 0 ? estimated / planTotalUSD : nil,
+            mixedPlanLabel: parts.joined(separator: " + ")
         )
     }
 
@@ -96,9 +151,10 @@ enum SubscriptionLedger {
         )
         return SubscriptionMonthSummary(
             estimatedCostUSD: estimated,
-            planTotalUSD: plan.monthlyPrice,
+            planAmount: plan.monthlyPrice,
+            currency: plan.currency,
             planCount: 1,
-            ratio: plan.monthlyPrice > 0 ? estimated / plan.monthlyPrice : nil
+            ratio: plan.monthlyPrice > 0 ? convert(usd: estimated, to: plan.currency) / plan.monthlyPrice : nil
         )
     }
 }

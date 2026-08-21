@@ -704,6 +704,12 @@ final class AppState: ObservableObject {
         saveSettingsQuietly()
     }
 
+    func setSubscriptionCurrency(_ provider: QuotaProviderID, currency: SubscriptionCurrency) {
+        let price = settings.subscriptionPlan(for: provider)?.monthlyPrice ?? 0
+        settings.upsertSubscription(provider: provider, monthlyPrice: price, currency: currency)
+        saveSettingsQuietly()
+    }
+
     func openQuotaDashboard(_ id: QuotaProviderID? = nil) {
         NSWorkspace.shared.open((id ?? settings.resolvedQuotaProvider).dashboardURL)
     }

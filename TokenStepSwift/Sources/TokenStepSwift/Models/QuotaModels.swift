@@ -115,10 +115,32 @@ enum MenuBarRingMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum SubscriptionCurrency: String, Codable, CaseIterable, Identifiable, Sendable {
+    case usd
+    case cny
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .usd: return L("美元")
+        case .cny: return L("人民币")
+        }
+    }
+
+    var monthlyLabel: String {
+        switch self {
+        case .usd: return L("美元/月")
+        case .cny: return L("人民币/月")
+        }
+    }
+}
+
 struct SubscriptionPlan: Codable, Equatable, Identifiable, Sendable {
     var provider: QuotaProviderID
     var monthlyPrice: Double
     var renewalDay: Int
+    var currency: SubscriptionCurrency
 
     var id: String { provider.rawValue }
 
@@ -126,12 +148,19 @@ struct SubscriptionPlan: Codable, Equatable, Identifiable, Sendable {
         case provider
         case monthlyPrice = "monthly_price"
         case renewalDay = "renewal_day"
+        case currency
     }
 
-    init(provider: QuotaProviderID, monthlyPrice: Double, renewalDay: Int) {
+    init(
+        provider: QuotaProviderID,
+        monthlyPrice: Double,
+        renewalDay: Int,
+        currency: SubscriptionCurrency = .usd
+    ) {
         self.provider = provider
         self.monthlyPrice = max(0, monthlyPrice)
         self.renewalDay = min(28, max(1, renewalDay))
+        self.currency = currency
     }
 
     init(from decoder: Decoder) throws {
@@ -139,6 +168,7 @@ struct SubscriptionPlan: Codable, Equatable, Identifiable, Sendable {
         provider = try container.decode(QuotaProviderID.self, forKey: .provider)
         monthlyPrice = max(0, try container.decodeIfPresent(Double.self, forKey: .monthlyPrice) ?? 0)
         renewalDay = min(28, max(1, try container.decodeIfPresent(Int.self, forKey: .renewalDay) ?? 1))
+        currency = try container.decodeIfPresent(SubscriptionCurrency.self, forKey: .currency) ?? .usd
     }
 
     static func normalized(_ plans: [SubscriptionPlan]) -> [SubscriptionPlan] {
@@ -147,7 +177,8 @@ struct SubscriptionPlan: Codable, Equatable, Identifiable, Sendable {
             seen[plan.provider] = SubscriptionPlan(
                 provider: plan.provider,
                 monthlyPrice: plan.monthlyPrice,
-                renewalDay: plan.renewalDay
+                renewalDay: plan.renewalDay,
+                currency: plan.currency
             )
         }
         return QuotaProviderID.allCases.compactMap { seen[$0] }

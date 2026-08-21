@@ -205,6 +205,8 @@ struct SettingsView: View {
         appState.setHistoryDays(TokenStepSettings.defaults.historyDays)
         appState.setAgentWorkRankVisibility(TokenStepSettings.defaults.agentWorkRankVisibility)
         appState.setExperimentalAgentSourcesVisible(TokenStepSettings.defaults.showExperimentalAgentSources)
+        appState.setUsageExportAutoEnabled(false)
+        appState.setUsageExportFolder("")
         appState.setAutostart(true)
     }
 }

@@ -39,6 +39,9 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertEqual(decoded.cursorDisplayMode, .cursorModels)
         XCTAssertEqual(decoded.kimiDisplayMode, .membership)
         XCTAssertEqual(decoded.menuBarRingMode, .quotaRemaining)
+        XCTAssertEqual(decoded.usageExportFolder, "")
+        XCTAssertFalse(decoded.usageExportAutoEnabled)
+        XCTAssertTrue(decoded.subscriptionPlans.isEmpty)
     }
 
     func testRoundTripKeepsQuotaDisplayPreferences() throws {
@@ -75,5 +78,36 @@ final class SettingsMigrationTests: XCTestCase {
         settings.setQuotaProvider(.cursor, enabled: false)
         XCTAssertFalse(settings.cursorQuotaEnabled)
         XCTAssertFalse(settings.enabledQuotaProviders.contains(.cursor))
+    }
+
+    func testRoundTripKeepsExportSettings() throws {
+        var settings = TokenStepSettings.defaults
+        settings.usageExportFolder = "/tmp/aiquota-export"
+        settings.usageExportAutoEnabled = true
+        let decoded = try JSONDecoder().decode(TokenStepSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.usageExportFolder, "/tmp/aiquota-export")
+        XCTAssertTrue(decoded.usageExportAutoEnabled)
+    }
+
+    func testExportAutoRequiresFolder() throws {
+        let json = """
+        {"usage_export_auto_enabled": true}
+        """.data(using: .utf8)!
+        let settings = try JSONDecoder().decode(TokenStepSettings.self, from: json)
+        XCTAssertFalse(settings.usageExportAutoEnabled)
+        XCTAssertEqual(settings.usageExportFolder, "")
+    }
+
+    func testRoundTripKeepsSubscriptionPlansAndTightestQuota() throws {
+        var settings = TokenStepSettings.defaults
+        settings.menuBarRingMode = .tightestQuota
+        settings.upsertSubscription(provider: .cursor, monthlyPrice: 20, renewalDay: 12)
+        settings.upsertSubscription(provider: .kimi, monthlyPrice: 0)
+        let decoded = try JSONDecoder().decode(TokenStepSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.menuBarRingMode, .tightestQuota)
+        XCTAssertEqual(decoded.subscriptionPlans.count, 1)
+        XCTAssertEqual(decoded.subscriptionPlans.first?.provider, .cursor)
+        XCTAssertEqual(decoded.subscriptionPlans.first?.monthlyPrice, 20)
+        XCTAssertEqual(decoded.subscriptionPlans.first?.renewalDay, 12)
     }
 }

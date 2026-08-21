@@ -17,7 +17,7 @@ struct SettingsDataSourcesPane: View {
                         sourceRow(source)
                     }
                     SettingsSourceRow(
-                        title: L("实验来源（ZCode / Hermes / WorkBuddy）"),
+                        title: L("实验来源（默认关闭）"),
                         detail: L("只读取本地 usage 字段，不读取对话正文。"),
                         badge: appState.settings.showExperimentalAgentSources ? L("已开启") : L("未启用"),
                         badgeStyle: appState.settings.showExperimentalAgentSources ? .ok : .off,
@@ -212,6 +212,16 @@ enum AgentSourceCopy {
             return L("~/.hermes/state.db · 实验")
         case "workbuddy":
             return L("~/.workbuddy/projects · 实验")
+        case "kimi-code":
+            return L("~/.kimi-code/sessions · wire.jsonl usage.record")
+        case "grok-cli":
+            return L("~/.grok/logs/unified.jsonl · inference_done")
+        case "opencode":
+            return L("~/.local/share/opencode · 实验")
+        case "cline":
+            return L("Cline tasks/ui_messages.json · 只读 tokensIn")
+        case "cherry":
+            return L("CherryStudio/.claude/projects · 实验")
         case "cursor":
             return L("本地无 token 账本 · 官方事件计入圆环")
         case "cursor-code":
@@ -236,6 +246,7 @@ enum SourceStatusCopy {
         case "disabled": return L("默认关闭")
         case "incremental_cache_error": return L("增量缓存异常")
         case "empty": return L("今日暂无")
+        case "discovered_no_usage": return L("已发现，暂不可统计")
         case "pending_refresh": return L("等待刷新")
         case "notLoggedIn": return L("未登录")
         case "wrongKeyType": return L("当前 key 非订阅计划")

@@ -8,6 +8,9 @@ final class AgentSourceRegistryTests: XCTestCase {
         XCTAssertEqual(AgentSourceRegistry.descriptor(for: "zcode")?.displayName, "ZCode")
         XCTAssertEqual(AgentSourceRegistry.displayName(for: "hermes"), "Hermes Agent")
         XCTAssertEqual(AgentSourceRegistry.displayName(for: "workbuddy"), "WorkBuddy")
+        XCTAssertEqual(AgentSourceRegistry.descriptor(for: "Kimi Code")?.id, "kimi-code")
+        XCTAssertEqual(AgentSourceRegistry.descriptor(for: "Grok CLI")?.tier, .ledger)
+        XCTAssertTrue(AgentSourceRegistry.ledgerSources.contains(where: { $0.id == "opencode" && $0.isExperimental }))
     }
 
     func testLedgerSourcesDoNotIncludeQuotaOrSignalTiers() {

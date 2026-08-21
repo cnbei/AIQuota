@@ -48,8 +48,8 @@ struct TodayHeroCard: View {
     @ViewBuilder
     private var metricChips: some View {
         TodayMetricChip(label: L("约合美元"), value: TokenStepFormat.money(appState.today.displayCost))
-        TodayMetricChip(label: L("活跃小时"), value: "\(appState.todayAgentWork.recordedActiveHours) h")
-        TodayMetricChip(label: L("累计"), value: TokenStepFormat.tokens(appState.snapshot.totals.tokens, compact: true))
+        TodayMetricChip(label: L("连续达标"), value: LFormat("%d 天", appState.goalStreak.current))
+        TodayMetricChip(label: L("最长连续"), value: LFormat("%d 天", appState.goalStreak.longest))
         TodayMetricChip(label: L("达标天"), value: LFormat("%d 天", appState.goalDays))
     }
 }

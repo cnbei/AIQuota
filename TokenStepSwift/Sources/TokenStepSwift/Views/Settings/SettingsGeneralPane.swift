@@ -57,7 +57,7 @@ struct SettingsGeneralPane: View {
                                 appState.setHistoryDays(30)
                             }
                         }
-                        Text(L("调大会增加首次采集耗时。"))
+                        Text(L("采集窗口最长 365 天。源文件被清理后，已观察的每日计数仍会保留。"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
@@ -202,7 +202,72 @@ struct SettingsGeneralPane: View {
                     }
                 }
             }
+
+            SettingsSectionCard(
+                title: L("数据导出"),
+                subtitle: L("只导出 token 计数和估算金额，不含设备名、账号或额度凭证。")
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    SettingsToggleRow(
+                        title: L("自动导出到文件夹"),
+                        isOn: Binding(
+                            get: { appState.settings.usageExportAutoEnabled },
+                            set: { appState.setUsageExportAutoEnabled($0) }
+                        )
+                    )
+                    StatusLine(
+                        symbol: "folder",
+                        title: L("导出文件夹"),
+                        value: exportFolderLabel,
+                        tint: appState.settings.usageExportFolder.isEmpty ? .gray : .tokenGreen
+                    )
+                    if let error = appState.usageExportError {
+                        Text(LFormat("导出失败：%@", error))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color(red: 0.56, green: 0.21, blue: 0.09))
+                    } else if let exportedAt = appState.lastUsageExportAt {
+                        Text(LFormat("已导出 %@", timeLabel(exportedAt)))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack(spacing: 8) {
+                        Button {
+                            appState.chooseAndSetUsageExportFolder()
+                        } label: {
+                            Text(L("选择文件夹"))
+                                .font(.caption.weight(.bold))
+                                .padding(.horizontal, 12)
+                                .frame(height: 32)
+                        }
+                        .buttonStyle(SettingsSecondaryButtonStyle())
+                        Button {
+                            appState.exportUsageNow()
+                        } label: {
+                            Text(L("立即导出"))
+                                .font(.caption.weight(.bold))
+                                .padding(.horizontal, 12)
+                                .frame(height: 32)
+                        }
+                        .buttonStyle(SettingsSecondaryButtonStyle())
+                    }
+                    Text(L("用量变化时自动覆盖同一组 CSV / JSON 文件。"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
+    }
+
+    private var exportFolderLabel: String {
+        let folder = appState.settings.usageExportFolder
+        if folder.isEmpty { return L("尚未选择文件夹") }
+        return URL(fileURLWithPath: folder).lastPathComponent
+    }
+
+    private func timeLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
     }
 
     private var refreshOptions: [RefreshOption] {

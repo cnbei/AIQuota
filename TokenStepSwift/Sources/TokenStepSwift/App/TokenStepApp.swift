@@ -44,8 +44,8 @@ struct TokenStepApp: App {
                         language: appState.settings.language,
                         warning: appState.hasLowQuotaWarning,
                         showsQuotaRemaining: appState.menuBarShowsQuotaRemaining,
-                        quotaRemaining: appState.selectedQuotaRemainingPercent,
-                        quotaHasError: !appState.selectedQuota.isAvailable,
+                        quotaRemaining: appState.menuBarQuotaRemainingPercent,
+                        quotaHasError: !appState.menuBarQuota.isAvailable,
                         quotaTitle: appState.statusBarQuotaTitle
                     )
                 }

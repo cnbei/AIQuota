@@ -27,6 +27,8 @@ final class AppState: ObservableObject {
     @Published private(set) var isSyncingUsage = false
     @Published private(set) var lastUsageSyncAt: Date?
     @Published var usageSyncError: String?
+    @Published var usageExportError: String?
+    @Published private(set) var lastUsageExportAt: Date?
     @Published var historyDeviceFilter: HistoryDeviceFilter = .all
     @Published var lastError: String?
     @Published var isQuotaPinned = false
@@ -47,12 +49,19 @@ final class AppState: ObservableObject {
     private var localHistoryDaily: [DailyUsage] = []
     private var remoteMachines: [UsageSyncService.MachineUsageFile] = UsageSyncService.loadCachedOthersMachines()
     private var isRefreshingCursorUsage = false
+    private let usageSourceWatcher = UsageSourceWatcher()
 
     init() {
         load()
         refreshIfSnapshotIsStale()
         applyDefaultAutostartIfNeeded()
         configureTimer()
+        usageSourceWatcher.onChange = { [weak self] in
+            DispatchQueue.main.async {
+                self?.refreshForSourceChange()
+            }
+        }
+        startUsageSourceWatcher()
         refreshCodexQuota()
         refreshTokenRank()
         refreshUsageSync()
@@ -62,6 +71,7 @@ final class AppState: ObservableObject {
     deinit {
         timer?.invalidate()
         foregroundTimer?.invalidate()
+        usageSourceWatcher.stop()
     }
 
     var today: DailyUsage {
@@ -104,6 +114,14 @@ final class AppState: ObservableObject {
 
     var goalDays: Int {
         snapshot.daily.filter { $0.totalTokens >= settings.dailyGoalTokens }.count
+    }
+
+    var goalStreak: GoalStreak {
+        GoalStreak.compute(
+            daily: snapshot.daily,
+            goal: settings.dailyGoalTokens,
+            today: DateFormatter.tokenStepDay.string(from: Date())
+        )
     }
 
     var visibleHistoryRows: [DailyUsage] {
@@ -252,16 +270,15 @@ final class AppState: ObservableObject {
         autostartEnabled = AutostartService.isEnabled
     }
 
-    func refresh(forceCollection: Bool = true) {
+    func refresh(forceCollection: Bool = true, ignoreAutomaticRetryTTL: Bool = false) {
         guard !isRefreshing else {
-            if forceCollection {
-                pendingRefreshAfterCurrent = true
-                pendingForcedRefresh = true
-            }
+            pendingRefreshAfterCurrent = true
+            pendingForcedRefresh = pendingForcedRefresh || forceCollection
             return
         }
         let refreshStartedAt = Date()
         if !forceCollection,
+           !ignoreAutomaticRetryTTL,
            EnergyRefreshPolicy.isFresh(
                lastAttemptAt: lastAutomaticUsageRefreshAttemptAt,
                ttl: EnergyRefreshPolicy.automaticRetryTTL(
@@ -297,6 +314,9 @@ final class AppState: ObservableObject {
             if collectionSucceeded, outcome != .updatedWhileSourcesChanged {
                 lastUsageObservedAt = Date()
             }
+            if collectionSucceeded {
+                startUsageSourceWatcher()
+            }
             applyOverlays()
             refreshCursorOfficialUsage()
             refreshUsageSync()
@@ -305,7 +325,7 @@ final class AppState: ObservableObject {
                 let force = pendingForcedRefresh
                 pendingRefreshAfterCurrent = false
                 pendingForcedRefresh = false
-                refresh(forceCollection: force)
+                refresh(forceCollection: force, ignoreAutomaticRetryTTL: !force)
             }
         }
     }
@@ -325,6 +345,10 @@ final class AppState: ObservableObject {
         refreshCodexQuota(now: now)
         refreshCursorCodeSignal(now: now)
         refreshTokenRank()
+    }
+
+    func refreshForSourceChange() {
+        refresh(forceCollection: false, ignoreAutomaticRetryTTL: true)
     }
 
     func setForegroundRefreshSurface(_ identifier: String, visible: Bool) {
@@ -444,12 +468,49 @@ final class AppState: ObservableObject {
     }
 
     var menuBarShowsQuotaRemaining: Bool {
-        settings.menuBarRingMode == .quotaRemaining && settings.showCodexQuota
+        switch settings.menuBarRingMode {
+        case .quotaRemaining, .tightestQuota:
+            return settings.showCodexQuota
+        case .tokenGoal:
+            return false
+        }
+    }
+
+    var menuBarQuota: ProviderQuota {
+        if settings.menuBarRingMode == .tightestQuota {
+            return tightestAvailableQuota ?? selectedQuota
+        }
+        return selectedQuota
+    }
+
+    var tightestAvailableQuota: ProviderQuota? {
+        visibleQuotas
+            .filter(\.isAvailable)
+            .min { lhs, rhs in
+                quotaRemainingPercent(lhs) < quotaRemainingPercent(rhs)
+            }
+    }
+
+    var menuBarQuotaRemainingPercent: Double {
+        quotaRemainingPercent(menuBarQuota)
+    }
+
+    var subscriptionMonthSummary: SubscriptionMonthSummary {
+        SubscriptionLedger.summary(plans: settings.subscriptionPlans, snapshot: snapshot)
+    }
+
+    func subscriptionSummary(for provider: QuotaProviderID) -> SubscriptionMonthSummary? {
+        SubscriptionLedger.providerSummary(
+            provider: provider,
+            plans: settings.subscriptionPlans,
+            snapshot: snapshot
+        )
     }
 
     var statusBarQuotaTitle: String {
-        let name = selectedQuota.provider.displayName
-        switch selectedQuota.provider {
+        let quota = menuBarQuota
+        let name = quota.provider.displayName
+        switch quota.provider {
         case .cursor:
             return "\(name) · \(settings.cursorDisplayMode.resolved.title)"
         case .kimi:
@@ -457,6 +518,14 @@ final class AppState: ObservableObject {
         default:
             return name
         }
+    }
+
+    private func quotaRemainingPercent(_ quota: ProviderQuota) -> Double {
+        QuotaPresentation.remainingPercent(
+            quota,
+            cursorMode: settings.cursorDisplayMode.resolved,
+            kimiMode: settings.kimiDisplayMode
+        )
     }
 
     private func quotaSortRank(_ quota: ProviderQuota) -> Int {
@@ -622,6 +691,17 @@ final class AppState: ObservableObject {
     func setMenuBarRingMode(_ mode: MenuBarRingMode) {
         settings.menuBarRingMode = mode
         saveSettingsAndReload()
+    }
+
+    func setSubscriptionPrice(_ provider: QuotaProviderID, price: Double) {
+        settings.upsertSubscription(provider: provider, monthlyPrice: price)
+        saveSettingsQuietly()
+    }
+
+    func setSubscriptionRenewalDay(_ provider: QuotaProviderID, day: Int) {
+        let price = settings.subscriptionPlan(for: provider)?.monthlyPrice ?? 0
+        settings.upsertSubscription(provider: provider, monthlyPrice: price, renewalDay: day)
+        saveSettingsQuietly()
     }
 
     func openQuotaDashboard(_ id: QuotaProviderID? = nil) {
@@ -1056,6 +1136,72 @@ final class AppState: ObservableObject {
         }
     }
 
+    func exportUsageNow(directory: URL? = nil) {
+        let folder: URL
+        if let directory {
+            folder = directory
+        } else if let chosen = chooseExportFolder() {
+            folder = chosen
+            settings.usageExportFolder = chosen.path
+            saveSettingsAndReload()
+        } else {
+            return
+        }
+        do {
+            _ = try UsageExportService.export(snapshot: ledgerSnapshot, to: folder)
+            lastUsageExportAt = Date()
+            usageExportError = nil
+        } catch {
+            usageExportError = error.localizedDescription
+        }
+    }
+
+    func setUsageExportFolder(_ folder: String) {
+        settings.usageExportFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines)
+        if settings.usageExportFolder.isEmpty {
+            settings.usageExportAutoEnabled = false
+        }
+        saveSettingsAndReload()
+    }
+
+    func setUsageExportAutoEnabled(_ enabled: Bool) {
+        if enabled, settings.usageExportFolder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let folder = chooseExportFolder() else { return }
+            settings.usageExportFolder = folder.path
+        }
+        settings.usageExportAutoEnabled = enabled && !settings.usageExportFolder.isEmpty
+        saveSettingsAndReload()
+        if settings.usageExportAutoEnabled {
+            exportUsageNow(directory: URL(fileURLWithPath: settings.usageExportFolder, isDirectory: true))
+        }
+    }
+
+    func chooseAndSetUsageExportFolder() {
+        guard let folder = chooseExportFolder() else { return }
+        settings.usageExportFolder = folder.path
+        saveSettingsAndReload()
+        if settings.usageExportAutoEnabled {
+            exportUsageNow(directory: folder)
+        }
+    }
+
+    @discardableResult
+    private func chooseExportFolder() -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = L("选择文件夹")
+        panel.message = L("只导出 token 计数和估算金额，不含设备名、账号或额度凭证。")
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        return url
+    }
+
+    private func startUsageSourceWatcher() {
+        usageSourceWatcher.start()
+    }
+
     func setUsageSyncRemoteURL(_ url: String) {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.usageSyncRemoteURL = trimmed.isEmpty ? TokenStepSettings.defaultUsageSyncRemoteURL : trimmed
@@ -1142,6 +1288,14 @@ final class AppState: ObservableObject {
             TokenStepLocalization.apply(loadedSettings.language)
             TokenStepThemeRuntime.apply(loadedSettings.theme)
             settings = loadedSettings
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func saveSettingsQuietly() {
+        do {
+            try DataService.saveSettings(settings)
         } catch {
             lastError = error.localizedDescription
         }

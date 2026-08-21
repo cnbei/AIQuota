@@ -74,12 +74,23 @@ TokenStep 采用：
 - Claude Code 额度在设置打开后，尝试读取本机 Keychain 里的 `Claude Code-credentials`，并调用 Anthropic OAuth usage 接口。
 - VS Code 扩展类 Agent 先列为候选支持，等有真实本机样本后再接入。
 
+## 实验支持：路径重探
+
+默认关闭。只读取官方 usage 字段，不读对话正文，不按字数估算。
+
+| Agent | 数据来源 | 说明 |
+| --- | --- | --- |
+| Kimi Code | `~/.kimi-code/sessions/**/wire.jsonl` 的 `usage.record` | 本机已读到 `inputOther` / `output` / `inputCacheRead` / `inputCacheCreation`。同一条 usage 也会出现在 `context.append_loop_event`，只计 `usage.record`。 |
+| Grok CLI | `~/.grok/logs/unified.jsonl` 的 `shell.turn.inference_done` | 本机已读到 `prompt_tokens` / `cached_prompt_tokens` / `completion_tokens` / `reasoning_tokens`。sessions 对话文件不读。 |
+| OpenCode | `~/.local/share/opencode` 的 `opencode*.db` 与 `storage/message` | 只取 tokens / usage 对象；结构对不上则 `discovered_no_usage`。 |
+| Cline | VS Code / Cursor `saoudrizwan.claude-dev/tasks/**/ui_messages.json` | 只取带 `tokensIn` / `tokensOut` 的记录，不解析对话正文。 |
+| Cherry Studio | `CherryStudio/.claude/projects` | 按 Claude 形态的 `message.usage` 读取。 |
+
 ## 候选支持
 
 | Agent | 可行性 | 下一步 |
 | --- | --- | --- |
 | Roo Code | 较高 | 需要真实 `ui_messages.json` 样本确认字段。 |
-| Cline | 较高 | 需要真实任务目录样本确认模型和 usage 字段。 |
 | Kilo Code | 较高 | 可按 `api_req_started` 事件读取 token，但需要本机样本验证。 |
 | CodeBuddy | 中 | 本机看到 VS Code secret buffer 和产品缓存，但不是明文 usage；需要官方 usage 文件或可验证字段。 |
 | Cursor / Windsurf / Trae | 中 | 需要确认是否本地暴露 token usage，不应只按聊天字数估算。 |

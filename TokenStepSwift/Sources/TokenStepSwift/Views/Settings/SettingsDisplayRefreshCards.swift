@@ -38,13 +38,13 @@ struct SettingsDisplayCard: View {
                     Text(L("菜单栏圆环"))
                         .font(.headline.weight(.heavy))
                         .foregroundStyle(Color.tokenInk)
-                    Text(L("默认显示所选服务的额度圆环，和浮层里选中的服务、档位一致。"))
+                    Text(L("目标显示今日 Token；所选跟随浮层选中的服务；最紧自动挑剩余最少的一家。"))
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Picker(L("菜单栏圆环"), selection: menuBarRingBinding) {
                         ForEach(MenuBarRingMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
+                            Text(mode.shortTitle).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -231,10 +231,10 @@ struct SettingsExperimentalAgentSourcesCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("实验 Agent 来源"), symbol: "point.3.connected.trianglepath.dotted", height: 282) {
+        SettingsCard(title: L("实验 Agent 来源"), symbol: "point.3.connected.trianglepath.dotted", height: 460) {
             VStack(alignment: .leading, spacing: 13) {
                 SettingsToggleRow(
-                    title: L("启用 ZCode / Hermes / WorkBuddy"),
+                    title: L("启用实验 Agent 来源"),
                     isOn: Binding(
                         get: { appState.settings.showExperimentalAgentSources },
                         set: { appState.setExperimentalAgentSourcesVisible($0) }
@@ -247,9 +247,9 @@ struct SettingsExperimentalAgentSourcesCard: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 VStack(spacing: 8) {
-                    experimentalSourceLine(name: "ZCode", sourceKey: "ZCode")
-                    experimentalSourceLine(name: "Hermes Agent", sourceKey: "Hermes Agent")
-                    experimentalSourceLine(name: "WorkBuddy", sourceKey: "WorkBuddy")
+                    ForEach(AgentSourceRegistry.ledgerSources.filter(\.isExperimental)) { source in
+                        experimentalSourceLine(name: source.displayName, sourceKey: source.displayName)
+                    }
                 }
 
                 Spacer(minLength: 0)

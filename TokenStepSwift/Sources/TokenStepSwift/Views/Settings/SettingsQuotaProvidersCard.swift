@@ -20,6 +20,26 @@ struct SettingsQuotaProvidersPane: View {
                     .padding(.top, 8)
             }
 
+            SettingsSectionCard(
+                title: L("订阅账本"),
+                subtitle: L("手填每月真实花费，用来对比本月估算用量。只存在本机，不随用量同步。")
+            ) {
+                VStack(spacing: 0) {
+                    ForEach(QuotaProviderID.allCases) { provider in
+                        SettingsSubscriptionPlanRow(provider: provider)
+                    }
+                }
+                if appState.subscriptionMonthSummary.planCount > 0 {
+                    StatusLine(
+                        symbol: "creditcard",
+                        title: L("本月估算 / 手填月费"),
+                        value: appState.subscriptionMonthSummary.headline,
+                        tint: .tokenGreen
+                    )
+                    .padding(.top, 8)
+                }
+            }
+
             HStack(alignment: .top, spacing: 12) {
                 SettingsSectionCard(
                     title: L("预警"),
@@ -50,6 +70,80 @@ struct SettingsQuotaProvidersPane: View {
                 SettingsTokenRankCard()
             }
         }
+    }
+}
+
+struct SettingsSubscriptionPlanRow: View {
+    @EnvironmentObject private var appState: AppState
+    var provider: QuotaProviderID
+    @State private var priceText = ""
+    @State private var dayText = ""
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(provider.displayName)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.tokenInk)
+                .frame(width: 96, alignment: .leading)
+            TextField("0", text: $priceText)
+                .textFieldStyle(.roundedBorder)
+                .font(.caption)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 72)
+                .onSubmit { commitPrice() }
+            Text(L("美元/月"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextField("1", text: $dayText)
+                .textFieldStyle(.roundedBorder)
+                .font(.caption)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 40)
+                .onSubmit { commitDay() }
+            Text(L("续费日"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 7)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.black.opacity(0.05))
+                .frame(height: 1)
+        }
+        .onAppear(perform: load)
+        .onChange(of: priceText) { _, _ in commitPrice() }
+        .onChange(of: dayText) { _, _ in commitDay() }
+    }
+
+    private func load() {
+        let plan = appState.settings.subscriptionPlan(for: provider)
+        if let price = plan?.monthlyPrice, price > 0 {
+            priceText = price.truncatingRemainder(dividingBy: 1) == 0
+                ? String(Int(price))
+                : String(format: "%.2f", price)
+        } else {
+            priceText = ""
+        }
+        dayText = "\(plan?.renewalDay ?? 1)"
+    }
+
+    private func commitPrice() {
+        let trimmed = priceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            appState.setSubscriptionPrice(provider, price: 0)
+            return
+        }
+        let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
+        if let value = Double(normalized), value >= 0 {
+            appState.setSubscriptionPrice(provider, price: value)
+        }
+    }
+
+    private func commitDay() {
+        let value = Int(dayText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+        appState.setSubscriptionRenewalDay(provider, day: value)
+        dayText = "\(min(28, max(1, value)))"
     }
 }
 

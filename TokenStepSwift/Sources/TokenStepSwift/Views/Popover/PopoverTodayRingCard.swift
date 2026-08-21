@@ -36,10 +36,11 @@ struct PopoverTodayRingCard: View {
                 Text(lap.lapStatusText)
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(Color.tokenInk)
-                Text(TokenStepFormat.money(appState.today.displayCost))
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Text(L("圈数进度，颜色不按来源分段"))
+                Text(appState.goalStreak.popoverHeadline)
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(Color.tokenGreenDark)
+                    .multilineTextAlignment(.center)
+                Text(streakCaption)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -47,5 +48,13 @@ struct PopoverTodayRingCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var streakCaption: String {
+        let streak = appState.goalStreak
+        if streak.longest > 0 {
+            return LFormat("最长连续 %d 天 · %@", streak.longest, TokenStepFormat.money(appState.today.displayCost))
+        }
+        return TokenStepFormat.money(appState.today.displayCost)
     }
 }

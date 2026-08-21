@@ -74,11 +74,16 @@ enum DataService {
             collectedSnapshot,
             previousSnapshot: previousSnapshot
         )
+        let preservedSnapshot = UsageHistoryLedger.merge(
+            collected: collectedSnapshot,
+            previous: previousSnapshot
+        )
         let snapshot = snapshotWithMigrationMetadata(
-            collectedSnapshot,
+            preservedSnapshot,
             previousSnapshot: previousSnapshot
         )
         try persist(snapshot: snapshot)
+        _ = try? UsageExportService.autoExportIfEnabled(snapshot: snapshot, settings: settings)
         let afterState = UsageCollector.collectionState(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources
@@ -307,7 +312,10 @@ enum DataService {
             kimiDisplayMode: settings.kimiDisplayMode,
             menuBarRingMode: settings.menuBarRingMode,
             usageSyncEnabled: settings.usageSyncEnabled,
-            usageSyncRemoteURL: settings.usageSyncRemoteURL
+            usageSyncRemoteURL: settings.usageSyncRemoteURL,
+            usageExportFolder: settings.usageExportFolder,
+            usageExportAutoEnabled: settings.usageExportAutoEnabled,
+            subscriptionPlans: settings.subscriptionPlans
         )
     }
 }

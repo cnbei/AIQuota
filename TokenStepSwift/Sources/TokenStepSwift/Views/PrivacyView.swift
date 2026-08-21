@@ -17,6 +17,9 @@ struct PrivacyView: View {
                     PrivacyFactRow(title: L("读取"), value: L("日期 · 模型名 · 客户端名 · token 计数"))
                     PrivacyFactRow(title: L("不读取"), value: L("prompt · 代码正文 · 对话内容"))
                     PrivacyFactRow(title: L("不做"), value: L("不开代理 · 不按字数估算 token"))
+                    PrivacyFactRow(title: L("本地保留"), value: L("源文件被清理后，已观察的每日计数仍留在本机"))
+                    PrivacyFactRow(title: L("可选导出"), value: L("CSV / JSON 只含计数和估算金额，不含设备名或账号"))
+                    PrivacyFactRow(title: L("手填月费"), value: L("只存在本机，不随用量同步，也不上传"))
                 }
             }
 

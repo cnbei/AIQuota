@@ -100,6 +100,8 @@ HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/ModelPricing.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageHistoryLedger.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageExportService.swift"
   "$SWIFT_DIR/Sources/TokenStepHelper/main.swift"
 )
 
@@ -164,7 +166,16 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 PLIST
 
 if [[ "$LAUNCH" == true ]]; then
-  rm -rf "/Applications/TokenStep.app"
+  # 删旧留新：先清掉本机旧包（含 TokenStep 旧名），再只装一份 /Applications/AIQuota.app。
+  # 不要 ditto 覆盖残留文件；不要并排留下 TokenStep.app。
+  for old_app in \
+    "/Applications/AIQuota.app" \
+    "/Applications/TokenStep.app" \
+    "$HOME/Applications/AIQuota.app" \
+    "$HOME/Applications/TokenStep.app"
+  do
+    rm -rf "$old_app"
+  done
   ditto "$APP_BUNDLE" "/Applications/$APP_NAME.app"
   /usr/bin/open -n "/Applications/$APP_NAME.app"
 fi

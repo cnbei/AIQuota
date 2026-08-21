@@ -46,6 +46,11 @@ enum UsageCollector {
         zCodeDatabaseURL: URL? = nil,
         hermesDatabaseURL: URL? = nil,
         workBuddyRootURLs: [URL]? = nil,
+        kimiCodeRootURLs: [URL]? = nil,
+        grokUnifiedLogURLs: [URL]? = nil,
+        openCodeRootURLs: [URL]? = nil,
+        clineRootURLs: [URL]? = nil,
+        cherryRootURLs: [URL]? = nil,
         forceFullValidation: Bool = false
     ) -> UsageSnapshot {
         let cacheLoad = loadCache()
@@ -66,15 +71,18 @@ enum UsageCollector {
         var codex = codexOutcome.result
         codex.source.recalibratedFromRevision = cacheLoad.recalibratedFromRevision
         let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
-        let zCode = includeExperimentalAgentSources
-            ? collectZCodeUsage(databaseURL: zCodeDatabaseURL)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let hermes = includeExperimentalAgentSources
-            ? collectHermesUsage(databaseURL: hermesDatabaseURL)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let workBuddy = includeExperimentalAgentSources
-            ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs, modifiedSince: sourceCutoff)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let experimental = collectExperimentalAgentSources(
+            enabled: includeExperimentalAgentSources,
+            modifiedSince: sourceCutoff,
+            zCodeDatabaseURL: zCodeDatabaseURL,
+            hermesDatabaseURL: hermesDatabaseURL,
+            workBuddyRootURLs: workBuddyRootURLs,
+            kimiCodeRootURLs: kimiCodeRootURLs,
+            grokUnifiedLogURLs: grokUnifiedLogURLs,
+            openCodeRootURLs: openCodeRootURLs,
+            clineRootURLs: clineRootURLs,
+            cherryRootURLs: cherryRootURLs
+        )
         if codexOutcome.usedIncrementalStore {
             cache.files = cache.files.filter { $0.value.tool != "Codex" && livePaths.contains($0.key) }
         } else {
@@ -91,20 +99,19 @@ enum UsageCollector {
             ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
         }
         let records = recordsInHistoryWindow(
-            deduped.records + zCode.records + hermes.records + workBuddy.records,
+            deduped.records + experimental.records,
             historyDays: historyDays,
             now: Date()
         )
+        var sources: [String: SourceInfo] = [
+            "Codex": codex.source,
+            "Claude Code": claude.source,
+            ccSwitchSourceName: ccSwitch.source
+        ]
+        sources.merge(experimental.sources) { _, new in new }
         return aggregate(
             records: records,
-            sources: [
-                "Codex": codex.source,
-                "Claude Code": claude.source,
-                ccSwitchSourceName: ccSwitch.source,
-                "ZCode": zCode.source,
-                "Hermes Agent": hermes.source,
-                "WorkBuddy": workBuddy.source
-            ]
+            sources: sources
         )
     }
 
@@ -136,8 +143,37 @@ enum UsageCollector {
             ]))
             urls.append(contentsOf: [
                 homeURL.appendingPathComponent(".workbuddy/projects", isDirectory: true),
-                homeURL.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
+                homeURL.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true),
+                homeURL.appendingPathComponent(".kimi-code/sessions", isDirectory: true),
+                homeURL.appendingPathComponent(".kimi/sessions", isDirectory: true)
             ].flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) })
+            let grokLog = homeURL.appendingPathComponent(".grok/logs/unified.jsonl")
+            if FileManager.default.fileExists(atPath: grokLog.path) {
+                urls.append(grokLog)
+            }
+            let openCodeRoots = [
+                homeURL.appendingPathComponent(".local/share/opencode", isDirectory: true),
+                homeURL.appendingPathComponent(".opencode", isDirectory: true)
+            ]
+            urls.append(contentsOf: openCodeRoots.flatMap { openCodeDatabaseFiles(in: $0) })
+            urls.append(contentsOf: openCodeRoots.flatMap {
+                Self.files(under: $0, pathExtensions: ["json"], modifiedSince: cutoff)
+            })
+            urls.append(contentsOf: [
+                homeURL.appendingPathComponent(
+                    "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+                    isDirectory: true
+                ),
+                homeURL.appendingPathComponent(
+                    "Library/Application Support/Cursor/User/globalStorage/saoudrizwan.claude-dev/tasks",
+                    isDirectory: true
+                ),
+                homeURL.appendingPathComponent(".cline/data/sessions", isDirectory: true)
+            ].flatMap { Self.files(under: $0, named: ["ui_messages.json"], modifiedSince: cutoff) })
+            urls.append(contentsOf: [
+                homeURL.appendingPathComponent("Library/Application Support/CherryStudio", isDirectory: true),
+                homeURL.appendingPathComponent("Library/Application Support/Cherry Studio", isDirectory: true)
+            ].flatMap { jsonlFiles(under: $0, modifiedSince: cutoff, skipsHiddenFiles: false) })
         }
 
         let files = Dictionary(grouping: urls, by: \.path)
@@ -393,6 +429,11 @@ enum UsageCollector {
         zCodeDatabaseURL: URL? = nil,
         hermesDatabaseURL: URL? = nil,
         workBuddyRootURLs: [URL]? = nil,
+        kimiCodeRootURLs: [URL]? = nil,
+        grokUnifiedLogURLs: [URL]? = nil,
+        openCodeRootURLs: [URL]? = nil,
+        clineRootURLs: [URL]? = nil,
+        cherryRootURLs: [URL]? = nil,
         includeExperimentalAgentSources: Bool = false,
         historyDays: Int? = nil,
         now: Date = Date()
@@ -413,34 +454,36 @@ enum UsageCollector {
         var ccSwitch = ccSwitchDatabaseURL.map {
             collectCCSwitchProxyUsage(databaseURL: $0)
         } ?? CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let zCode = includeExperimentalAgentSources
-            ? zCodeDatabaseURL.map { collectZCodeUsage(databaseURL: $0) } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let hermes = includeExperimentalAgentSources
-            ? hermesDatabaseURL.map { collectHermesUsage(databaseURL: $0) } ?? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
-        let workBuddy = includeExperimentalAgentSources
-            ? collectWorkBuddyUsage(rootURLs: workBuddyRootURLs ?? [], modifiedSince: nil)
-            : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let experimental = collectExperimentalAgentSources(
+            enabled: includeExperimentalAgentSources,
+            modifiedSince: nil,
+            zCodeDatabaseURL: zCodeDatabaseURL,
+            hermesDatabaseURL: hermesDatabaseURL,
+            workBuddyRootURLs: workBuddyRootURLs,
+            kimiCodeRootURLs: kimiCodeRootURLs,
+            grokUnifiedLogURLs: grokUnifiedLogURLs,
+            openCodeRootURLs: openCodeRootURLs,
+            clineRootURLs: clineRootURLs,
+            cherryRootURLs: cherryRootURLs
+        )
         let deduped = deduplicateCrossSource(
             nativeRecords: codex.records + claude.records,
             proxyRecords: ccSwitch.records
         )
         ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
-        let allRecords = deduped.records + zCode.records + hermes.records + workBuddy.records
+        let allRecords = deduped.records + experimental.records
         let records = historyDays.map {
             recordsInHistoryWindow(allRecords, historyDays: $0, now: now)
         } ?? allRecords
+        var sources: [String: SourceInfo] = [
+            "Codex": codex.source,
+            "Claude Code": claude.source,
+            ccSwitchSourceName: ccSwitch.source
+        ]
+        sources.merge(experimental.sources) { _, new in new }
         return aggregate(
             records: records,
-            sources: [
-                "Codex": codex.source,
-                "Claude Code": claude.source,
-                ccSwitchSourceName: ccSwitch.source,
-                "ZCode": zCode.source,
-                "Hermes Agent": hermes.source,
-                "WorkBuddy": workBuddy.source
-            ]
+            sources: sources
         )
     }
 
@@ -2185,6 +2228,612 @@ enum UsageCollector {
         )
     }
 
+    private static let experimentalSourceNames = [
+        "ZCode",
+        "Hermes Agent",
+        "WorkBuddy",
+        "Kimi Code",
+        "Grok CLI",
+        "OpenCode",
+        "Cline",
+        "Cherry Studio"
+    ]
+
+    private static func collectExperimentalAgentSources(
+        enabled: Bool,
+        modifiedSince cutoffDate: Date?,
+        zCodeDatabaseURL: URL?,
+        hermesDatabaseURL: URL?,
+        workBuddyRootURLs: [URL]?,
+        kimiCodeRootURLs: [URL]?,
+        grokUnifiedLogURLs: [URL]?,
+        openCodeRootURLs: [URL]?,
+        clineRootURLs: [URL]?,
+        cherryRootURLs: [URL]?
+    ) -> (records: [UsageRecord], sources: [String: SourceInfo]) {
+        guard enabled else {
+            let sources = Dictionary(uniqueKeysWithValues: experimentalSourceNames.map {
+                ($0, SourceInfo(status: "disabled", files: nil, records: 0))
+            })
+            return ([], sources)
+        }
+
+        let isolated = zCodeDatabaseURL != nil
+            || hermesDatabaseURL != nil
+            || workBuddyRootURLs != nil
+            || kimiCodeRootURLs != nil
+            || grokUnifiedLogURLs != nil
+            || openCodeRootURLs != nil
+            || clineRootURLs != nil
+            || cherryRootURLs != nil
+        let zCode = isolated && zCodeDatabaseURL == nil
+            ? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
+            : collectZCodeUsage(databaseURL: zCodeDatabaseURL)
+        let hermes = isolated && hermesDatabaseURL == nil
+            ? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
+            : collectHermesUsage(databaseURL: hermesDatabaseURL)
+        let workBuddy = collectWorkBuddyUsage(
+            rootURLs: isolated ? (workBuddyRootURLs ?? []) : workBuddyRootURLs,
+            modifiedSince: cutoffDate
+        )
+        let kimi = collectKimiCodeUsage(
+            rootURLs: isolated ? (kimiCodeRootURLs ?? []) : kimiCodeRootURLs,
+            modifiedSince: cutoffDate
+        )
+        let grok = collectGrokCLIUsage(
+            logURLs: isolated ? (grokUnifiedLogURLs ?? []) : grokUnifiedLogURLs,
+            modifiedSince: cutoffDate
+        )
+        let openCode = collectOpenCodeUsage(
+            rootURLs: isolated ? (openCodeRootURLs ?? []) : openCodeRootURLs,
+            modifiedSince: cutoffDate
+        )
+        let cline = collectClineUsage(
+            rootURLs: isolated ? (clineRootURLs ?? []) : clineRootURLs,
+            modifiedSince: cutoffDate
+        )
+        let cherry = collectCherryStudioUsage(
+            rootURLs: isolated ? (cherryRootURLs ?? []) : cherryRootURLs,
+            modifiedSince: cutoffDate
+        )
+        let results: [(String, CollectorResult)] = [
+            ("ZCode", zCode),
+            ("Hermes Agent", hermes),
+            ("WorkBuddy", workBuddy),
+            ("Kimi Code", kimi),
+            ("Grok CLI", grok),
+            ("OpenCode", openCode),
+            ("Cline", cline),
+            ("Cherry Studio", cherry)
+        ]
+        return (
+            results.flatMap(\.1.records),
+            Dictionary(uniqueKeysWithValues: results.map { ($0.0, $0.1.source) })
+        )
+    }
+
+    private static func collectKimiCodeUsage(
+        rootURLs: [URL]?,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let roots = rootURLs ?? [
+            home.appendingPathComponent(".kimi-code/sessions", isDirectory: true),
+            home.appendingPathComponent(".kimi/sessions", isDirectory: true)
+        ]
+        let discovered = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let files = discovered.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for file in files {
+            var lineNumber = 0
+            try? forEachLine(in: file, matchingAny: ["usage.record"]) { line in
+                lineNumber += 1
+                guard let object = jsonObject(from: line),
+                      object["type"] as? String == "usage.record",
+                      let usageObject = object["usage"] as? [String: Any],
+                      let timestamp = object["time"],
+                      let day = dayString(fromEpoch: timestamp)
+                else {
+                    return
+                }
+                let usage = kimiCodeUsage(from: usageObject)
+                guard usage.totalTokens > 0 else { return }
+                let requestID = [
+                    isoString(fromEpoch: timestamp) ?? "",
+                    modelKey(object["model"] as? String),
+                    "\(usage.totalTokens)"
+                ].joined(separator: ":")
+                guard seen.insert(requestID).inserted else { return }
+                records.append(UsageRecord(
+                    date: day,
+                    timestamp: isoString(fromEpoch: timestamp),
+                    tool: "Kimi Code",
+                    model: modelKey(object["model"] as? String),
+                    usage: usage,
+                    source: .kimiCode,
+                    requestID: requestID,
+                    sessionID: kimiSessionID(from: file),
+                    sourcePath: file.path,
+                    lineNumber: lineNumber,
+                    dataSource: object["usageScope"] as? String
+                ))
+            }
+        }
+
+        return discoveredSourceResult(discoveredRoots: discovered, files: files, records: records)
+    }
+
+    private static func kimiCodeUsage(from usage: [String: Any]) -> TokenUsageCounts {
+        canonicalUsageCounts(
+            rawInputTokens: integerValue(usage["inputOther"] as Any),
+            outputTokens: integerValue(usage["output"] as Any),
+            cacheCreationInputTokens: integerValue(usage["inputCacheCreation"] as Any),
+            cacheReadInputTokens: integerValue(usage["inputCacheRead"] as Any),
+            inputIncludesCachedTokens: false
+        )
+    }
+
+    private static func kimiSessionID(from file: URL) -> String? {
+        file.pathComponents.reversed().first { $0.hasPrefix("session_") }
+    }
+
+    private static func collectGrokCLIUsage(
+        logURLs: [URL]?,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let defaultLog = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".grok/logs/unified.jsonl")
+        let files = (logURLs ?? [defaultLog]).filter { url in
+            guard FileManager.default.fileExists(atPath: url.path) else { return false }
+            if let cutoffDate,
+               let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+               let modified = values.contentModificationDate,
+               modified < cutoffDate {
+                return false
+            }
+            return true
+        }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for file in files {
+            var lineNumber = 0
+            try? forEachLine(in: file, matchingAny: ["shell.turn.inference_done"]) { line in
+                lineNumber += 1
+                guard let object = jsonObject(from: line),
+                      object["msg"] as? String == "shell.turn.inference_done",
+                      let ctx = object["ctx"] as? [String: Any],
+                      let timestamp = object["ts"],
+                      let day = (timestamp as? String).flatMap(dayString(fromISO:)) ?? dayString(fromEpoch: timestamp)
+                else {
+                    return
+                }
+                let prompt = integerValue(ctx["prompt_tokens"] as Any)
+                let cached = integerValue(ctx["cached_prompt_tokens"] as Any)
+                let completion = integerValue(ctx["completion_tokens"] as Any)
+                let reasoning = integerValue(ctx["reasoning_tokens"] as Any)
+                let usage = canonicalUsageCounts(
+                    rawInputTokens: prompt,
+                    outputTokens: completion,
+                    cacheReadInputTokens: cached,
+                    reasoningOutputTokens: reasoning,
+                    inputIncludesCachedTokens: true
+                )
+                guard usage.totalTokens > 0 else { return }
+                let sessionID = nonEmptyString(object["sid"] as? String)
+                let timestampText = timestamp as? String ?? isoString(fromEpoch: timestamp) ?? ""
+                let requestID = [sessionID ?? "", timestampText, "\(ctx["loop_index"] ?? 0)"].joined(separator: ":")
+                guard seen.insert(requestID).inserted else { return }
+                records.append(UsageRecord(
+                    date: day,
+                    timestamp: timestampText.isEmpty ? nil : timestampText,
+                    tool: "Grok CLI",
+                    model: modelKey(ctx["model"] as? String ?? "grok"),
+                    usage: usage,
+                    source: .grokCLI,
+                    requestID: requestID,
+                    sessionID: sessionID,
+                    sourcePath: file.path,
+                    lineNumber: lineNumber
+                ))
+            }
+        }
+
+        let discovered = FileManager.default.fileExists(atPath: (logURLs ?? [defaultLog]).first?.path ?? "")
+        return discoveredSourceResult(
+            discoveredRoots: discovered ? (logURLs ?? [defaultLog]) : [],
+            files: files,
+            records: records
+        )
+    }
+
+    private static func collectOpenCodeUsage(
+        rootURLs: [URL]?,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let roots = rootURLs ?? [
+            home.appendingPathComponent(".local/share/opencode", isDirectory: true),
+            home.appendingPathComponent(".opencode", isDirectory: true)
+        ]
+        let discovered = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let jsonFiles = discovered.flatMap { files(under: $0, pathExtensions: ["json"], modifiedSince: cutoffDate) }
+        let databases = discovered.flatMap(openCodeDatabaseFiles)
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for file in jsonFiles {
+            guard let object = jsonObject(fromFile: file),
+                  let usage = openCodeUsage(from: object),
+                  usage.totalTokens > 0
+            else {
+                continue
+            }
+            let timestamp = openCodeTimestamp(from: object)
+            guard let day = dayString(fromEpoch: timestamp) ?? (timestamp as? String).flatMap(dayString(fromISO:)) else {
+                continue
+            }
+            let requestID = nonEmptyString(object["id"] as? String)
+                ?? "\(file.path):\(usage.totalTokens)"
+            guard seen.insert(requestID).inserted else { continue }
+            records.append(UsageRecord(
+                date: day,
+                timestamp: isoString(fromEpoch: timestamp),
+                tool: "OpenCode",
+                model: modelKey(
+                    object["model"] as? String
+                        ?? (object["model"] as? [String: Any])?["id"] as? String
+                ),
+                usage: usage,
+                source: .opencode,
+                requestID: requestID,
+                sessionID: nonEmptyString(object["sessionID"] as? String ?? object["session_id"] as? String),
+                sourcePath: file.path
+            ))
+        }
+
+        for database in databases {
+            records.append(contentsOf: collectOpenCodeDatabase(database, seen: &seen))
+        }
+
+        return discoveredSourceResult(
+            discoveredRoots: discovered,
+            files: jsonFiles + databases,
+            records: records
+        )
+    }
+
+    private static func collectOpenCodeDatabase(_ database: URL, seen: inout Set<String>) -> [UsageRecord] {
+        guard let tables = sqliteJSONRows(database: database, query: "select name from sqlite_master where type = 'table'") else {
+            return []
+        }
+        var records: [UsageRecord] = []
+        for tableRow in tables {
+            guard let table = tableRow["name"] as? String,
+                  table.range(of: "^[A-Za-z_][A-Za-z0-9_]*$", options: .regularExpression) != nil
+            else { continue }
+            guard let columns = sqliteJSONRows(database: database, query: "pragma table_info(\(table))") else { continue }
+            let names = Set(columns.compactMap { $0["name"] as? String })
+            if names.contains("input_tokens"), names.contains("output_tokens") {
+                let timeColumn = ["started_at", "created_at", "time_created", "time", "timestamp"].first { names.contains($0) } ?? "rowid"
+                let idColumn = ["id", "message_id"].first { names.contains($0) } ?? "rowid"
+                let sessionColumn = ["session_id", "sessionID"].first { names.contains($0) }
+                let modelColumn = ["model", "model_id"].first { names.contains($0) }
+                let query = """
+                select \(idColumn) as id,
+                       \(timeColumn) as started_at,
+                       \(sessionColumn.map { "\($0) as session_id" } ?? "null as session_id"),
+                       \(modelColumn.map { "\($0) as model" } ?? "'unknown' as model"),
+                       coalesce(input_tokens, 0) as input_tokens,
+                       coalesce(output_tokens, 0) as output_tokens,
+                       coalesce(\(names.contains("cache_read_tokens") ? "cache_read_tokens" : "0"), 0) as cache_read,
+                       coalesce(\(names.contains("reasoning_tokens") ? "reasoning_tokens" : "0"), 0) as reasoning
+                from \(table)
+                """
+                guard let rows = sqliteJSONRows(database: database, query: query) else { continue }
+                for row in rows {
+                    guard let day = dayString(fromEpoch: row["started_at"] as Any) else { continue }
+                    let usage = canonicalUsageCounts(
+                        rawInputTokens: integerValue(row["input_tokens"] as Any),
+                        outputTokens: integerValue(row["output_tokens"] as Any),
+                        cacheReadInputTokens: integerValue(row["cache_read"] as Any),
+                        reasoningOutputTokens: integerValue(row["reasoning"] as Any),
+                        inputIncludesCachedTokens: true
+                    )
+                    guard usage.totalTokens > 0 else { continue }
+                    let requestID = nonEmptyString(row["id"] as? String) ?? "\(table):\(day):\(usage.totalTokens)"
+                    guard seen.insert(requestID).inserted else { continue }
+                    records.append(UsageRecord(
+                        date: day,
+                        timestamp: isoString(fromEpoch: row["started_at"] as Any),
+                        tool: "OpenCode",
+                        model: modelKey(row["model"] as? String),
+                        usage: usage,
+                        source: .opencode,
+                        requestID: requestID,
+                        sessionID: nonEmptyString(row["session_id"] as? String),
+                        sourcePath: database.path
+                    ))
+                }
+                continue
+            }
+            if let dataColumn = ["data", "payload", "json"].first(where: names.contains) {
+                let timeColumn = ["time_created", "created_at", "time", "timestamp"].first { names.contains($0) }
+                let idColumn = ["id"].first { names.contains($0) } ?? "rowid"
+                let query = """
+                select \(idColumn) as id,
+                       \(timeColumn.map { "\($0) as started_at" } ?? "null as started_at"),
+                       json_extract(\(dataColumn), '$.tokens.input') as input_tokens,
+                       json_extract(\(dataColumn), '$.tokens.output') as output_tokens,
+                       json_extract(\(dataColumn), '$.tokens.cache.read') as cache_read,
+                       json_extract(\(dataColumn), '$.tokens.reasoning') as reasoning,
+                       json_extract(\(dataColumn), '$.model') as model
+                from \(table)
+                where json_extract(\(dataColumn), '$.tokens.input') is not null
+                   or json_extract(\(dataColumn), '$.tokens.output') is not null
+                """
+                guard let rows = sqliteJSONRows(database: database, query: query) else { continue }
+                for row in rows {
+                    guard let day = dayString(fromEpoch: row["started_at"] as Any) else { continue }
+                    let usage = canonicalUsageCounts(
+                        rawInputTokens: integerValue(row["input_tokens"] as Any),
+                        outputTokens: integerValue(row["output_tokens"] as Any),
+                        cacheReadInputTokens: integerValue(row["cache_read"] as Any),
+                        reasoningOutputTokens: integerValue(row["reasoning"] as Any),
+                        inputIncludesCachedTokens: true
+                    )
+                    guard usage.totalTokens > 0 else { continue }
+                    let requestID = nonEmptyString(row["id"] as? String) ?? "\(table):\(day):\(usage.totalTokens)"
+                    guard seen.insert(requestID).inserted else { continue }
+                    records.append(UsageRecord(
+                        date: day,
+                        timestamp: isoString(fromEpoch: row["started_at"] as Any),
+                        tool: "OpenCode",
+                        model: modelKey(row["model"] as? String),
+                        usage: usage,
+                        source: .opencode,
+                        requestID: requestID,
+                        sourcePath: database.path
+                    ))
+                }
+            }
+        }
+        return records
+    }
+
+    private static func openCodeTimestamp(from object: [String: Any]) -> Any? {
+        if let time = object["time"] as? [String: Any] {
+            return time["created"] ?? time["updated"]
+        }
+        return object["time"] ?? object["created_at"] ?? object["timestamp"]
+    }
+
+    private static func openCodeUsage(from object: [String: Any]) -> TokenUsageCounts? {
+        let nestedData = object["data"] as? [String: Any]
+        let tokens = object["tokens"] as? [String: Any]
+            ?? nestedData?["tokens"] as? [String: Any]
+            ?? object["usage"] as? [String: Any]
+            ?? nestedData?["usage"] as? [String: Any]
+        guard let tokens else { return nil }
+        let input = firstIntegerValue(in: tokens, keys: ["input", "input_tokens", "prompt_tokens"])
+        let output = firstIntegerValue(in: tokens, keys: ["output", "output_tokens", "completion_tokens"])
+        let reasoning = firstIntegerValue(in: tokens, keys: ["reasoning", "reasoning_tokens"])
+        var cacheRead = firstIntegerValue(in: tokens, keys: ["cache_read", "cache_read_tokens", "cacheRead"])
+        var cacheWrite = firstIntegerValue(in: tokens, keys: ["cache_write", "cache_write_tokens", "cacheWrite"])
+        if let cache = tokens["cache"] as? [String: Any] {
+            cacheRead = firstIntegerValue(in: cache, keys: ["read", "read_tokens"])
+            cacheWrite = firstIntegerValue(in: cache, keys: ["write", "write_tokens"])
+        }
+        guard input + output + reasoning + cacheRead + cacheWrite > 0 else { return nil }
+        return canonicalUsageCounts(
+            rawInputTokens: input,
+            outputTokens: output,
+            cacheCreationInputTokens: cacheWrite,
+            cacheReadInputTokens: cacheRead,
+            reasoningOutputTokens: reasoning,
+            inputIncludesCachedTokens: true
+        )
+    }
+
+    private static func collectClineUsage(
+        rootURLs: [URL]?,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let roots = rootURLs ?? [
+            home.appendingPathComponent(
+                "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+                isDirectory: true
+            ),
+            home.appendingPathComponent(
+                "Library/Application Support/Cursor/User/globalStorage/saoudrizwan.claude-dev/tasks",
+                isDirectory: true
+            ),
+            home.appendingPathComponent(".cline/data/sessions", isDirectory: true)
+        ]
+        let discovered = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let files = discovered.flatMap {
+            self.files(under: $0, named: ["ui_messages.json"], modifiedSince: cutoffDate)
+        }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for file in files {
+            for (index, object) in jsonObjects(in: file).enumerated() {
+                guard let usage = clineUsage(from: object), usage.totalTokens > 0 else { continue }
+                let timestamp = object["ts"] ?? object["time"] ?? object["timestamp"]
+                guard let day = dayString(fromEpoch: timestamp) else { continue }
+                let requestID = nonEmptyString(object["ask"] as? String)
+                    ?? "\(file.path):\(index):\(usage.totalTokens)"
+                guard seen.insert(requestID).inserted else { continue }
+                records.append(UsageRecord(
+                    date: day,
+                    timestamp: isoString(fromEpoch: timestamp),
+                    tool: "Cline",
+                    model: modelKey(object["model"] as? String),
+                    usage: usage,
+                    source: .cline,
+                    requestID: requestID,
+                    sessionID: file.deletingLastPathComponent().lastPathComponent,
+                    sourcePath: file.path,
+                    lineNumber: index + 1
+                ))
+            }
+        }
+
+        return discoveredSourceResult(discoveredRoots: discovered, files: files, records: records)
+    }
+
+    private static func clineUsage(from object: [String: Any]) -> TokenUsageCounts? {
+        if let metrics = object["apiMetrics"] as? [String: Any] ?? object["metrics"] as? [String: Any],
+           let usage = clineMetricsUsage(metrics) {
+            return usage
+        }
+        if let usage = clineMetricsUsage(object) {
+            return usage
+        }
+        guard let text = object["text"] as? String,
+              text.contains("tokensIn") || text.contains("tokensOut"),
+              let parsed = jsonObject(from: text)
+        else {
+            return nil
+        }
+        return clineMetricsUsage(parsed)
+    }
+
+    private static func clineMetricsUsage(_ object: [String: Any]) -> TokenUsageCounts? {
+        guard object.keys.contains("tokensIn") || object.keys.contains("tokensOut") else { return nil }
+        if object["estimated"] as? Bool == true { return nil }
+        let usage = canonicalUsageCounts(
+            rawInputTokens: firstIntegerValue(in: object, keys: ["tokensIn", "tokens_in"]),
+            outputTokens: firstIntegerValue(in: object, keys: ["tokensOut", "tokens_out"]),
+            cacheCreationInputTokens: firstIntegerValue(in: object, keys: ["cacheWrites", "cache_writes"]),
+            cacheReadInputTokens: firstIntegerValue(in: object, keys: ["cacheReads", "cache_reads"]),
+            inputIncludesCachedTokens: false
+        )
+        return usage.totalTokens > 0 ? usage : nil
+    }
+
+    private static func collectCherryStudioUsage(
+        rootURLs: [URL]?,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let roots = rootURLs ?? [
+            home.appendingPathComponent("Library/Application Support/CherryStudio", isDirectory: true),
+            home.appendingPathComponent("Library/Application Support/Cherry Studio", isDirectory: true)
+        ]
+        let discovered = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let files = discovered.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate, skipsHiddenFiles: false) }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for file in files {
+            var lineNumber = 0
+            try? forEachLine(in: file, matchingAny: ["\"usage\"", "\"input_tokens\""]) { line in
+                lineNumber += 1
+                guard let object = jsonObject(from: line),
+                      let usage = cherryUsage(from: object),
+                      usage.totalTokens > 0
+                else {
+                    return
+                }
+                let timestamp = object["timestamp"] ?? object["created_at"] ?? object["time"]
+                    ?? (object["message"] as? [String: Any])?["created_at"]
+                guard let day = dayString(fromEpoch: timestamp) ?? dayString(fromISO: timestamp as? String ?? "") else {
+                    return
+                }
+                let message = object["message"] as? [String: Any]
+                let requestID = nonEmptyString(message?["id"] as? String)
+                    ?? nonEmptyString(object["id"] as? String)
+                    ?? "\(file.path):\(lineNumber)"
+                guard seen.insert(requestID).inserted else { return }
+                records.append(UsageRecord(
+                    date: day,
+                    timestamp: (timestamp as? String) ?? isoString(fromEpoch: timestamp),
+                    tool: "Cherry Studio",
+                    model: modelKey(message?["model"] as? String ?? object["model"] as? String),
+                    usage: usage,
+                    source: .cherry,
+                    requestID: requestID,
+                    sessionID: file.deletingLastPathComponent().lastPathComponent,
+                    sourcePath: file.path,
+                    lineNumber: lineNumber
+                ))
+            }
+        }
+
+        return discoveredSourceResult(discoveredRoots: discovered, files: files, records: records)
+    }
+
+    private static func cherryUsage(from object: [String: Any]) -> TokenUsageCounts? {
+        let usage = object["usage"] as? [String: Any]
+            ?? (object["message"] as? [String: Any])?["usage"] as? [String: Any]
+        guard let usage else { return nil }
+        let rawInput = firstIntegerValue(in: usage, keys: ["input_tokens", "inputTokens", "prompt_tokens"])
+        let output = firstIntegerValue(in: usage, keys: ["output_tokens", "outputTokens", "completion_tokens"])
+        let cacheRead = firstIntegerValue(in: usage, keys: ["cache_read_input_tokens", "cache_read_tokens"])
+        let cacheWrite = firstIntegerValue(in: usage, keys: ["cache_creation_input_tokens", "cache_creation_tokens"])
+        let reasoning = firstIntegerValue(in: usage, keys: ["reasoning_tokens"])
+        guard rawInput + output + cacheRead + cacheWrite + reasoning > 0 else { return nil }
+        return canonicalUsageCounts(
+            rawInputTokens: rawInput,
+            outputTokens: output,
+            cacheCreationInputTokens: cacheWrite,
+            cacheReadInputTokens: cacheRead,
+            reasoningOutputTokens: reasoning,
+            inputIncludesCachedTokens: true
+        )
+    }
+
+    private static func discoveredSourceResult(
+        discoveredRoots: [URL],
+        files: [URL],
+        records: [UsageRecord]
+    ) -> CollectorResult {
+        let status: String
+        if discoveredRoots.isEmpty {
+            status = "missing"
+        } else if files.isEmpty {
+            status = "discovered_no_usage"
+        } else if records.isEmpty {
+            status = "missing_valid_rows"
+        } else {
+            status = "ok"
+        }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(status: status, files: files.count, records: records.count)
+        )
+    }
+
+    private static func jsonObject(from line: String) -> [String: Any]? {
+        guard let data = line.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func jsonObject(fromFile url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func jsonObjects(in url: URL) -> [[String: Any]] {
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data)
+        else {
+            return []
+        }
+        if let array = object as? [[String: Any]] {
+            return array
+        }
+        if let single = object as? [String: Any] {
+            return [single]
+        }
+        return []
+    }
+
     private static func firstIntegerValue(in object: [String: Any], keys: [String]) -> Int {
         for key in keys where object.keys.contains(key) {
             return max(0, integerValue(object[key] as Any))
@@ -2560,19 +3209,27 @@ enum UsageCollector {
 
     private static func isAgentWorkRecord(_ record: UsageRecord) -> Bool {
         switch record.source {
-        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy:
+        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy, .kimiCode, .grokCLI, .opencode, .cline, .cherry:
             return true
         case .unknown:
             return false
         }
     }
 
-    private static func jsonlFiles(under root: URL, modifiedSince cutoffDate: Date? = nil) -> [URL] {
+    private static func jsonlFiles(
+        under root: URL,
+        modifiedSince cutoffDate: Date? = nil,
+        skipsHiddenFiles: Bool = true
+    ) -> [URL] {
+        var options: FileManager.DirectoryEnumerationOptions = []
+        if skipsHiddenFiles {
+            options.insert(.skipsHiddenFiles)
+        }
         guard FileManager.default.fileExists(atPath: root.path),
               let enumerator = FileManager.default.enumerator(
                 at: root,
                 includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
-                options: [.skipsHiddenFiles]
+                options: options
               )
         else {
             return []
@@ -2592,6 +3249,57 @@ enum UsageCollector {
                 return nil
             }
             return url
+        }
+    }
+
+    private static func files(
+        under root: URL,
+        named names: Set<String> = [],
+        pathExtensions: Set<String> = [],
+        modifiedSince cutoffDate: Date? = nil
+    ) -> [URL] {
+        guard FileManager.default.fileExists(atPath: root.path),
+              let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+              )
+        else {
+            return []
+        }
+
+        return enumerator.compactMap { item in
+            guard let url = item as? URL,
+                  let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey]),
+                  values.isRegularFile == true
+            else {
+                return nil
+            }
+            let nameMatch = names.isEmpty || names.contains(url.lastPathComponent)
+            let extensionMatch = pathExtensions.isEmpty || pathExtensions.contains(url.pathExtension.lowercased())
+            guard nameMatch, extensionMatch else { return nil }
+            if let cutoffDate,
+               let modificationDate = values.contentModificationDate,
+               modificationDate < cutoffDate {
+                return nil
+            }
+            return url
+        }
+    }
+
+    private static func openCodeDatabaseFiles(in root: URL) -> [URL] {
+        guard FileManager.default.fileExists(atPath: root.path),
+              let items = try? FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+              )
+        else {
+            return []
+        }
+        return items.filter { url in
+            let name = url.lastPathComponent.lowercased()
+            return name.hasPrefix("opencode") && url.pathExtension.lowercased() == "db"
         }
     }
 
@@ -4256,6 +4964,11 @@ private enum UsageRecordSource: String, Codable, Equatable {
     case zcode
     case hermes
     case workbuddy
+    case kimiCode
+    case grokCLI
+    case opencode
+    case cline
+    case cherry
     case unknown
 }
 

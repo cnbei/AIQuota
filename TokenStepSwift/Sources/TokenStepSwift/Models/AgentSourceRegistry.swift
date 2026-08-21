@@ -96,6 +96,63 @@ enum AgentSourceRegistry {
             rankClientKeys: ["workbuddy"]
         ),
         AgentSourceDescriptor(
+            id: "kimi-code",
+            displayName: "Kimi Code",
+            tier: .ledger,
+            colorToken: AgentSourceColorToken(red: 0.18, green: 0.58, blue: 0.46),
+            isExperimental: true,
+            probePaths: ["~/.kimi-code/sessions", "~/.kimi/sessions"],
+            aliases: ["Kimi CLI"],
+            rankClientKeys: ["kimi-code"]
+        ),
+        AgentSourceDescriptor(
+            id: "grok-cli",
+            displayName: "Grok CLI",
+            tier: .ledger,
+            colorToken: AgentSourceColorToken(red: 0.78, green: 0.32, blue: 0.24),
+            isExperimental: true,
+            probePaths: ["~/.grok/logs/unified.jsonl"],
+            aliases: [],
+            rankClientKeys: ["grok-cli"]
+        ),
+        AgentSourceDescriptor(
+            id: "opencode",
+            displayName: "OpenCode",
+            tier: .ledger,
+            colorToken: AgentSourceColorToken(red: 0.28, green: 0.46, blue: 0.86),
+            isExperimental: true,
+            probePaths: ["~/.local/share/opencode", "~/.opencode"],
+            aliases: [],
+            rankClientKeys: ["opencode"]
+        ),
+        AgentSourceDescriptor(
+            id: "cline",
+            displayName: "Cline",
+            tier: .ledger,
+            colorToken: AgentSourceColorToken(red: 0.86, green: 0.48, blue: 0.20),
+            isExperimental: true,
+            probePaths: [
+                "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+                "~/Library/Application Support/Cursor/User/globalStorage/saoudrizwan.claude-dev/tasks",
+                "~/.cline/data/sessions"
+            ],
+            aliases: [],
+            rankClientKeys: ["cline"]
+        ),
+        AgentSourceDescriptor(
+            id: "cherry",
+            displayName: "Cherry Studio",
+            tier: .ledger,
+            colorToken: AgentSourceColorToken(red: 0.86, green: 0.28, blue: 0.42),
+            isExperimental: true,
+            probePaths: [
+                "~/Library/Application Support/CherryStudio",
+                "~/Library/Application Support/Cherry Studio"
+            ],
+            aliases: ["CherryStudio"],
+            rankClientKeys: ["cherry"]
+        ),
+        AgentSourceDescriptor(
             id: "cursor",
             displayName: "Cursor",
             tier: .quota,
@@ -170,6 +227,11 @@ enum AgentSourceRegistry {
             "Hermes",
             "Hermes Agent",
             "WorkBuddy",
+            "Kimi Code",
+            "Grok CLI",
+            "OpenCode",
+            "Cline",
+            "Cherry Studio",
             "Codex via CC Switch",
             "Claude Code via CC Switch"
         ]

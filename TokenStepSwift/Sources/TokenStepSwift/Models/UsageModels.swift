@@ -883,6 +883,9 @@ struct TokenStepSettings: Codable {
     var menuBarRingMode: MenuBarRingMode
     var usageSyncEnabled: Bool
     var usageSyncRemoteURL: String
+    var usageExportFolder: String
+    var usageExportAutoEnabled: Bool
+    var subscriptionPlans: [SubscriptionPlan]
 
     var showCodexQuota: Bool {
         !enabledQuotaProviders.isEmpty
@@ -920,6 +923,9 @@ struct TokenStepSettings: Codable {
         case menuBarRingMode = "menu_bar_ring_mode"
         case usageSyncEnabled = "usage_sync_enabled"
         case usageSyncRemoteURL = "usage_sync_remote_url"
+        case usageExportFolder = "usage_export_folder"
+        case usageExportAutoEnabled = "usage_export_auto_enabled"
+        case subscriptionPlans = "subscription_plans"
     }
 
     static let defaultUsageSyncRemoteURL = "https://origin.cursor.com/liubei/aiquota-usage-sync.git"
@@ -946,7 +952,10 @@ struct TokenStepSettings: Codable {
         kimiDisplayMode: .membership,
         menuBarRingMode: .quotaRemaining,
         usageSyncEnabled: false,
-        usageSyncRemoteURL: defaultUsageSyncRemoteURL
+        usageSyncRemoteURL: defaultUsageSyncRemoteURL,
+        usageExportFolder: "",
+        usageExportAutoEnabled: false,
+        subscriptionPlans: []
     )
 
     init(
@@ -972,7 +981,10 @@ struct TokenStepSettings: Codable {
         kimiDisplayMode: KimiDisplayMode = .membership,
         menuBarRingMode: MenuBarRingMode = .quotaRemaining,
         usageSyncEnabled: Bool = false,
-        usageSyncRemoteURL: String = TokenStepSettings.defaultUsageSyncRemoteURL
+        usageSyncRemoteURL: String = TokenStepSettings.defaultUsageSyncRemoteURL,
+        usageExportFolder: String = "",
+        usageExportAutoEnabled: Bool = false,
+        subscriptionPlans: [SubscriptionPlan] = []
     ) {
         self.dailyGoalTokens = dailyGoalTokens
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -1010,6 +1022,9 @@ struct TokenStepSettings: Codable {
         self.usageSyncEnabled = usageSyncEnabled
         let trimmedRemoteURL = usageSyncRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.usageSyncRemoteURL = trimmedRemoteURL.isEmpty ? TokenStepSettings.defaultUsageSyncRemoteURL : trimmedRemoteURL
+        self.usageExportFolder = usageExportFolder.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.usageExportAutoEnabled = usageExportAutoEnabled && !self.usageExportFolder.isEmpty
+        self.subscriptionPlans = SubscriptionPlan.normalized(subscriptionPlans)
     }
 
     init(from decoder: Decoder) throws {
@@ -1070,6 +1085,13 @@ struct TokenStepSettings: Codable {
         let decodedRemoteURL = try container.decodeIfPresent(String.self, forKey: .usageSyncRemoteURL)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         usageSyncRemoteURL = (decodedRemoteURL?.isEmpty == false ? decodedRemoteURL : nil) ?? defaults.usageSyncRemoteURL
+        usageExportFolder = (try container.decodeIfPresent(String.self, forKey: .usageExportFolder) ?? defaults.usageExportFolder)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        usageExportAutoEnabled = (try container.decodeIfPresent(Bool.self, forKey: .usageExportAutoEnabled) ?? defaults.usageExportAutoEnabled)
+            && !usageExportFolder.isEmpty
+        subscriptionPlans = SubscriptionPlan.normalized(
+            try container.decodeIfPresent([SubscriptionPlan].self, forKey: .subscriptionPlans) ?? defaults.subscriptionPlans
+        )
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1097,6 +1119,22 @@ struct TokenStepSettings: Codable {
         try container.encode(menuBarRingMode, forKey: .menuBarRingMode)
         try container.encode(usageSyncEnabled, forKey: .usageSyncEnabled)
         try container.encode(usageSyncRemoteURL, forKey: .usageSyncRemoteURL)
+        try container.encode(usageExportFolder, forKey: .usageExportFolder)
+        try container.encode(usageExportAutoEnabled, forKey: .usageExportAutoEnabled)
+        try container.encode(subscriptionPlans, forKey: .subscriptionPlans)
+    }
+
+    func subscriptionPlan(for provider: QuotaProviderID) -> SubscriptionPlan? {
+        subscriptionPlans.first { $0.provider == provider }
+    }
+
+    mutating func upsertSubscription(provider: QuotaProviderID, monthlyPrice: Double, renewalDay: Int? = nil) {
+        let day = renewalDay ?? subscriptionPlan(for: provider)?.renewalDay ?? 1
+        var plans = subscriptionPlans.filter { $0.provider != provider }
+        if monthlyPrice > 0 {
+            plans.append(SubscriptionPlan(provider: provider, monthlyPrice: monthlyPrice, renewalDay: day))
+        }
+        subscriptionPlans = SubscriptionPlan.normalized(plans)
     }
 
     mutating func setQuotaProvider(_ id: QuotaProviderID, enabled: Bool) {

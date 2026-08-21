@@ -109,6 +109,11 @@ struct PopoverMenuCardView: View {
                             .foregroundStyle(remainingTextColor)
                     }
                 }
+                if let summary = appState.subscriptionSummary(for: quota.provider) {
+                    Text(LFormat("本月估算 %@ · 套餐 %@", TokenStepFormat.money(summary.estimatedCostUSD), TokenStepFormat.money(summary.planTotalUSD)))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.tokenMuted)
+                }
                 Text(L("状态栏显示所选圆环"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.tokenMuted)

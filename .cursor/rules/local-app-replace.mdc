@@ -1,0 +1,25 @@
+---
+description: 更新本机 AIQuota 时必须删旧留新，只留一份 /Applications/AIQuota.app
+alwaysApply: true
+---
+
+# 本机 AIQuota：删旧留新
+
+用户说「更新本机」「装上新的」「把旧的删掉」时，按这个做，不要只覆盖、不要留两份。
+
+1. 先退出正在跑的 `AIQuota` / `TokenStepSwift` / `TokenStepHelper`。
+2. **先删旧包，再拷新包**。必须清掉：
+   - `/Applications/AIQuota.app`
+   - `/Applications/TokenStep.app`（旧名，不能和 AIQuota 并排活着）
+   - `~/Applications/` 下同名副本
+3. 用 `script/build_swiftui_and_run.sh` 打新包并装到 `/Applications/AIQuota.app`。脚本已按删旧留新写好。
+4. **不要动** `~/Library/Application Support/TokenStep`（用量、设置、钥匙串数据）。
+5. 本机正式安装只留这一份。不要再拷一份到桌面、Downloads 或 `dist/` 当「正在用的 App」。
+
+```bash
+# ✅ 删旧再装新，然后打开
+script/build_swiftui_and_run.sh
+
+# ❌ 只 ditto 覆盖 /Applications/AIQuota.app
+# ❌ 留下 /Applications/TokenStep.app
+```

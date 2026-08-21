@@ -94,14 +94,63 @@ enum KimiDisplayMode: String, Codable, CaseIterable, Identifiable {
 enum MenuBarRingMode: String, Codable, CaseIterable, Identifiable {
     case tokenGoal
     case quotaRemaining
+    case tightestQuota
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .tokenGoal: return L("Token 目标")
-        case .quotaRemaining: return L("额度剩余")
+        case .quotaRemaining: return L("所选额度")
+        case .tightestQuota: return L("最紧额度")
         }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .tokenGoal: return L("目标")
+        case .quotaRemaining: return L("所选")
+        case .tightestQuota: return L("最紧")
+        }
+    }
+}
+
+struct SubscriptionPlan: Codable, Equatable, Identifiable, Sendable {
+    var provider: QuotaProviderID
+    var monthlyPrice: Double
+    var renewalDay: Int
+
+    var id: String { provider.rawValue }
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case monthlyPrice = "monthly_price"
+        case renewalDay = "renewal_day"
+    }
+
+    init(provider: QuotaProviderID, monthlyPrice: Double, renewalDay: Int) {
+        self.provider = provider
+        self.monthlyPrice = max(0, monthlyPrice)
+        self.renewalDay = min(28, max(1, renewalDay))
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try container.decode(QuotaProviderID.self, forKey: .provider)
+        monthlyPrice = max(0, try container.decodeIfPresent(Double.self, forKey: .monthlyPrice) ?? 0)
+        renewalDay = min(28, max(1, try container.decodeIfPresent(Int.self, forKey: .renewalDay) ?? 1))
+    }
+
+    static func normalized(_ plans: [SubscriptionPlan]) -> [SubscriptionPlan] {
+        var seen: [QuotaProviderID: SubscriptionPlan] = [:]
+        for plan in plans where plan.monthlyPrice > 0 {
+            seen[plan.provider] = SubscriptionPlan(
+                provider: plan.provider,
+                monthlyPrice: plan.monthlyPrice,
+                renewalDay: plan.renewalDay
+            )
+        }
+        return QuotaProviderID.allCases.compactMap { seen[$0] }
     }
 }
 

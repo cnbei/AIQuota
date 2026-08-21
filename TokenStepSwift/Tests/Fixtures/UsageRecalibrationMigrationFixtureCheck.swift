@@ -202,7 +202,15 @@ struct UsageRecalibrationMigrationFixtureCheck {
                 state: state,
                 now: now
             ),
-            "an expired checkpoint should trigger periodic validation"
+            "an expired checkpoint should still collect incrementally"
+        )
+        try expect(
+            !CollectionCheckpointPolicy.shouldForceFullValidation(force: false),
+            "periodic collection must not SHA-256 unchanged files"
+        )
+        try expect(
+            CollectionCheckpointPolicy.shouldForceFullValidation(force: true),
+            "manual refresh may fully validate incremental cache"
         )
         try expect(
             !CollectionCheckpointPolicy.shouldPersist(
@@ -277,6 +285,27 @@ struct UsageRecalibrationMigrationFixtureCheck {
             EnergyRefreshPolicy.foregroundTickInterval(requestedSeconds: 0) == nil,
             "manual mode should not run a visible-surface timer"
         )
+        try expect(
+            EnergyRefreshPolicy.sourceChangeFloorSeconds(
+                powerSource: .ac,
+                lowPowerMode: false
+            ) == 15,
+            "AC source-change refresh should use a fifteen-second floor"
+        )
+        try expect(
+            EnergyRefreshPolicy.sourceChangeFloorSeconds(
+                powerSource: .battery,
+                lowPowerMode: false
+            ) == 30,
+            "battery source-change refresh should use a thirty-second floor"
+        )
+        try expect(
+            EnergyRefreshPolicy.sourceChangeFloorSeconds(
+                powerSource: .ac,
+                lowPowerMode: true
+            ) == 30,
+            "low-power mode should use the battery source-change floor"
+        )
 
         let now = Date(timeIntervalSince1970: 20_000)
         try expect(
@@ -294,6 +323,33 @@ struct UsageRecalibrationMigrationFixtureCheck {
                 now: now
             ),
             "foreground presentation should reuse fresh usage"
+        )
+        try expect(
+            !EnergyRefreshPolicy.shouldRefreshForSourceChange(
+                lastAttemptAt: now.addingTimeInterval(-14),
+                powerSource: .ac,
+                lowPowerMode: false,
+                now: now
+            ),
+            "source-change refresh should honor the AC floor"
+        )
+        try expect(
+            EnergyRefreshPolicy.shouldRefreshForSourceChange(
+                lastAttemptAt: now.addingTimeInterval(-15),
+                powerSource: .ac,
+                lowPowerMode: false,
+                now: now
+            ),
+            "source-change refresh should run once the AC floor elapses"
+        )
+        try expect(
+            EnergyRefreshPolicy.sourceChangeRetryDelay(
+                lastAttemptAt: now.addingTimeInterval(-10),
+                powerSource: .ac,
+                lowPowerMode: false,
+                now: now
+            ) == 5,
+            "source-change refresh should trail until the AC floor elapses"
         )
     }
 

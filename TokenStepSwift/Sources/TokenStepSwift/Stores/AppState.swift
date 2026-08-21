@@ -36,6 +36,7 @@ final class AppState: ObservableObject {
 
     private var timer: Timer?
     private var foregroundTimer: Timer?
+    private var sourceChangeFloorTimer: Timer?
     private var foregroundRefreshSurfaces = Set<String>()
     private var pendingRefreshAfterCurrent = false
     private var pendingForcedRefresh = false
@@ -71,6 +72,7 @@ final class AppState: ObservableObject {
     deinit {
         timer?.invalidate()
         foregroundTimer?.invalidate()
+        sourceChangeFloorTimer?.invalidate()
         usageSourceWatcher.stop()
     }
 
@@ -347,8 +349,35 @@ final class AppState: ObservableObject {
         refreshTokenRank()
     }
 
-    func refreshForSourceChange() {
+    func refreshForSourceChange(now: Date = Date()) {
+        if isRefreshing {
+            refresh(forceCollection: false, ignoreAutomaticRetryTTL: true)
+            return
+        }
+        if let delay = EnergyRefreshPolicy.sourceChangeRetryDelay(
+            lastAttemptAt: lastUsageObservedAt,
+            powerSource: TokenStepPowerState.source,
+            lowPowerMode: TokenStepPowerState.lowPowerModeEnabled,
+            now: now
+        ) {
+            scheduleTrailingSourceChange(after: delay)
+            return
+        }
+        sourceChangeFloorTimer?.invalidate()
+        sourceChangeFloorTimer = nil
         refresh(forceCollection: false, ignoreAutomaticRetryTTL: true)
+    }
+
+    private func scheduleTrailingSourceChange(after delay: TimeInterval) {
+        guard sourceChangeFloorTimer?.isValid != true else { return }
+        sourceChangeFloorTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.sourceChangeFloorTimer = nil
+                self.refresh(forceCollection: false, ignoreAutomaticRetryTTL: true)
+            }
+        }
+        sourceChangeFloorTimer?.tolerance = min(delay * 0.1, 2)
     }
 
     func setForegroundRefreshSurface(_ identifier: String, visible: Bool) {

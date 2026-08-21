@@ -14,6 +14,8 @@ enum EnergyRefreshPolicy {
     static let usageSyncTTL: TimeInterval = 20 * 60
     static let minimumAutomaticRetryTTL: TimeInterval = 60
     static let maximumForegroundTickSeconds = 60
+    static let acSourceChangeFloorSeconds = 15
+    static let batterySourceChangeFloorSeconds = 30
 
     static func backgroundInterval(
         requestedSeconds: Int,
@@ -49,6 +51,45 @@ enum EnergyRefreshPolicy {
     static func foregroundTickInterval(requestedSeconds: Int) -> Int? {
         guard requestedSeconds > 0 else { return nil }
         return min(requestedSeconds, maximumForegroundTickSeconds)
+    }
+
+    static func sourceChangeFloorSeconds(
+        powerSource: TokenStepPowerSource,
+        lowPowerMode: Bool
+    ) -> Int {
+        powerSource == .battery || lowPowerMode
+            ? batterySourceChangeFloorSeconds
+            : acSourceChangeFloorSeconds
+    }
+
+    static func shouldRefreshForSourceChange(
+        lastAttemptAt: Date?,
+        powerSource: TokenStepPowerSource,
+        lowPowerMode: Bool,
+        now: Date
+    ) -> Bool {
+        sourceChangeRetryDelay(
+            lastAttemptAt: lastAttemptAt,
+            powerSource: powerSource,
+            lowPowerMode: lowPowerMode,
+            now: now
+        ) == nil
+    }
+
+    static func sourceChangeRetryDelay(
+        lastAttemptAt: Date?,
+        powerSource: TokenStepPowerSource,
+        lowPowerMode: Bool,
+        now: Date
+    ) -> TimeInterval? {
+        guard let lastAttemptAt else { return nil }
+        let remaining = TimeInterval(
+            sourceChangeFloorSeconds(
+                powerSource: powerSource,
+                lowPowerMode: lowPowerMode
+            )
+        ) - now.timeIntervalSince(lastAttemptAt)
+        return remaining > 0 ? remaining : nil
     }
 }
 

@@ -68,7 +68,7 @@ enum DataService {
         let collectedSnapshot = UsageCollector.collect(
             historyDays: historyDays,
             includeExperimentalAgentSources: settings.showExperimentalAgentSources,
-            forceFullValidation: force || existingCheckpoint?.isFresh(at: Date()) != true
+            forceFullValidation: CollectionCheckpointPolicy.shouldForceFullValidation(force: force)
         )
         try validateRecalibrationCandidate(
             collectedSnapshot,
@@ -347,6 +347,12 @@ enum CollectionCheckpointPolicy {
     ) -> Bool {
         guard !force, hasSnapshot, let checkpoint else { return false }
         return checkpoint.isFresh(at: now) && checkpoint.state == state
+    }
+
+    /// Full-file SHA-256 is reserved for a manual refresh. A stale 24h
+    /// checkpoint still collects incrementally; it does not rehash unchanged files.
+    static func shouldForceFullValidation(force: Bool) -> Bool {
+        force
     }
 
     static func shouldPersist(

@@ -171,7 +171,7 @@ struct PopoverMenuCardView: View {
     }
 
     private var cursorSpendSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(L("本账期已用"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.tokenMuted)
@@ -186,15 +186,25 @@ struct PopoverMenuCardView: View {
                     .foregroundStyle(Color.tokenMuted)
             }
             if let used = quota.metrics?.cursorModelsUsed {
-                Text(LFormat("%@ 已用 %.0f%%", "Cursor Models", used))
-                    .font(.footnote)
-                    .foregroundStyle(Color.tokenInk)
+                cursorPoolBar(title: "Cursor Models", usedPercent: used)
             }
             if let used = quota.metrics?.otherModelsUsed {
-                Text(LFormat("%@ 已用 %.0f%%", "Other Models", used))
-                    .font(.footnote)
-                    .foregroundStyle(Color.tokenInk)
+                cursorPoolBar(title: "Other Models", usedPercent: used)
             }
+        }
+    }
+
+    private func cursorPoolBar(title: String, usedPercent: Double) -> some View {
+        let remaining = min(max(100 - usedPercent, 0), 100)
+        let rgb = QuotaRemainingColor.rgb(remaining)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(LFormat("%@ 已用 %.0f%%", title, usedPercent))
+                .font(.footnote)
+                .foregroundStyle(Color.tokenInk)
+            CodexBarUsageBar(
+                fillPercent: usedPercent,
+                tint: Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
+            )
         }
     }
 

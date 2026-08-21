@@ -54,11 +54,6 @@ struct PopoverQuotaCard: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }
-                if let summary = appState.subscriptionSummary(for: quota.provider) {
-                    Text(LFormat("本月估算 %@ · 套餐 %@", summary.estimatedText, summary.planText))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
                 if appState.isQuotaPinned {
                     Text(L("已固定置顶，切换应用也不会关闭"))
                         .font(.system(size: 10))

@@ -117,6 +117,59 @@ final class CursorServicesTests: XCTestCase {
         XCTAssertEqual(windows[1].kind, .otherModels)
         XCTAssertEqual(windows[1].usedPercent, 7, accuracy: 0.01)
         XCTAssertEqual(windows[1].remainingPercent, 93, accuracy: 0.01)
+        XCTAssertEqual(windows[0].resetsAt, cursorResetDate("2026-09-16T00:00:00.000Z"))
+        XCTAssertEqual(windows[1].resetsAt, windows[0].resetsAt)
+    }
+
+    func testCursorWindowsParseUnixMillisecondReset() {
+        let payload: [String: Any] = [
+            "billingCycleEnd": "1789516800000",
+            "planUsage": [
+                "autoPercentUsed": 12,
+                "apiPercentUsed": 3
+            ]
+        ]
+        let windows = CursorQuotaService.windows(from: payload)
+        XCTAssertEqual(windows[0].resetsAt, Date(timeIntervalSince1970: 1_789_516_800))
+    }
+
+    func testCursorWindowsParseProtobufTimestampReset() {
+        let payload: [String: Any] = [
+            "planInfo": [
+                "billingCycleEnd": [
+                    "seconds": 1_789_516_800,
+                    "nanos": 0
+                ]
+            ],
+            "planUsage": [
+                "autoPercentUsed": 4,
+                "apiPercentUsed": 1
+            ]
+        ]
+        let windows = CursorQuotaService.windows(from: payload)
+        XCTAssertEqual(windows[0].resetsAt, Date(timeIntervalSince1970: 1_789_516_800))
+    }
+
+    func testCursorDashboardWithoutResetBorrowsUsageSummaryCycle() {
+        let dashboard: [String: Any] = [
+            "planUsage": [
+                "autoPercentUsed": 11.9,
+                "apiPercentUsed": 32.8
+            ]
+        ]
+        XCTAssertNil(CursorQuotaService.resetDate(from: dashboard))
+        let merged = CursorQuotaService.applyingBillingCycleFallback(
+            dashboard,
+            fallback: ["billingCycleEnd": "2026-09-16T00:00:00.000Z"]
+        )
+        let windows = CursorQuotaService.windows(from: merged)
+        XCTAssertEqual(windows[0].resetsAt, cursorResetDate("2026-09-16T00:00:00.000Z"))
+    }
+
+    private func cursorResetDate(_ iso: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: iso)
     }
 
     func testCursorWindowsTreatOnePercentAsOneNotOneHundred() {

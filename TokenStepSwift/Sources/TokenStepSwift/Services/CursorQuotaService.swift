@@ -63,7 +63,15 @@ enum CursorQuotaService {
     private static func fetchBestUsage(userId: String, accessToken: String) throws -> Any {
         if let dashboard = try? fetchDashboard(accessToken: accessToken),
            !windows(from: dashboard).isEmpty {
-            return dashboard
+            if resetDate(from: dashboard) != nil {
+                return dashboard
+            }
+            let summary = try? fetchJSON(
+                url: "https://cursor.com/api/usage-summary",
+                userId: userId,
+                accessToken: accessToken
+            )
+            return applyingBillingCycleFallback(dashboard, fallback: summary)
         }
         if let summary = try? fetchJSON(
             url: "https://cursor.com/api/usage-summary",
@@ -93,7 +101,7 @@ enum CursorQuotaService {
             if object["includedAmountCents"] == nil {
                 object["includedAmountCents"] = info["includedAmountCents"]
             }
-            if object["billingCycleEnd"] == nil {
+            if date(from: object["billingCycleEnd"]) == nil, date(from: info["billingCycleEnd"]) != nil {
                 object["billingCycleEnd"] = info["billingCycleEnd"]
             }
         }
@@ -152,7 +160,7 @@ enum CursorQuotaService {
             ?? object["plan"] as? [String: Any]
             ?? object["planUsage"] as? [String: Any]
             ?? object
-        let reset = date(from: object["billingCycleEnd"] ?? object["resetsAt"] ?? object["resetAt"] ?? plan["resetsAt"])
+        let reset = resetDate(from: object)
 
         let auto = QuotaJSON.number(
             plan["autoPercentUsed"]
@@ -302,15 +310,69 @@ enum CursorQuotaService {
         )
     }
 
-    private static func date(from value: Any?) -> Date? {
-        if let text = value as? String {
-            if let date = ISO8601DateFormatter.tokenStep.date(from: text) {
-                return date
+    static func applyingBillingCycleFallback(_ payload: Any, fallback: Any?) -> Any {
+        guard resetDate(from: payload) == nil else { return payload }
+        guard var object = payload as? [String: Any],
+              let raw = firstRawResetValue(in: fallback)
+        else { return payload }
+        object["billingCycleEnd"] = raw
+        return object
+    }
+
+    static func resetDate(from payload: Any) -> Date? {
+        guard let raw = firstRawResetValue(in: payload) else { return nil }
+        return date(from: raw)
+    }
+
+    private static func firstRawResetValue(in payload: Any?) -> Any? {
+        guard let object = payload as? [String: Any] else { return nil }
+        let individual = object["individualUsage"] as? [String: Any]
+        let nested: [[String: Any]] = [
+            object,
+            (object["planInfo"] as? [String: Any]) ?? [:],
+            (object["planUsage"] as? [String: Any]) ?? [:],
+            (object["plan"] as? [String: Any]) ?? [:],
+            individual ?? [:],
+            (individual?["plan"] as? [String: Any]) ?? [:]
+        ]
+        let keys = [
+            "billingCycleEnd", "billingCycleEndTime", "billingPeriodEnd",
+            "periodEnd", "resetsAt", "resetAt", "cycleEnd"
+        ]
+        for container in nested {
+            for key in keys {
+                if let value = container[key], date(from: value) != nil {
+                    return value
+                }
             }
-            return ISO8601DateFormatter.tokenStepNoFraction.date(from: text)
+        }
+        return nil
+    }
+
+    private static func date(from value: Any?) -> Date? {
+        if value == nil || value is NSNull { return nil }
+        if let object = value as? [String: Any] {
+            if let millis = QuotaJSON.number(object["millis"] ?? object["milliseconds"]) {
+                return Date(timeIntervalSince1970: millis / 1000)
+            }
+            if let seconds = QuotaJSON.number(object["seconds"] ?? object["sec"]) {
+                let nanos = QuotaJSON.number(object["nanos"]) ?? 0
+                return Date(timeIntervalSince1970: seconds + nanos / 1_000_000_000)
+            }
+            return date(from: object["value"] ?? object["iso"] ?? object["time"])
         }
         if let seconds = QuotaJSON.number(value) {
             return Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds)
+        }
+        guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty
+        else { return nil }
+        if let date = ISO8601DateFormatter.tokenStep.date(from: text)
+            ?? ISO8601DateFormatter.tokenStepNoFraction.date(from: text) {
+            return date
+        }
+        if let date = ISO8601DateFormatter.tokenStepDay.date(from: text) {
+            return date
         }
         return nil
     }
@@ -323,7 +385,8 @@ enum CursorQuotaService {
         let quota = cache.quota
         guard quota.isAvailable else { return nil }
         let hasTwoPools = quota.windows.contains { $0.kind == .cursorModels || $0.kind == .otherModels }
-        return hasTwoPools ? quota : nil
+        let hasReset = quota.windows.contains { $0.resetsAt != nil }
+        return hasTwoPools && hasReset ? quota : nil
     }
 
     private static func writeCache(_ quota: ProviderQuota) {
@@ -353,6 +416,12 @@ private extension ISO8601DateFormatter {
     static let tokenStepNoFraction: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    static let tokenStepDay: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
         return formatter
     }()
 }

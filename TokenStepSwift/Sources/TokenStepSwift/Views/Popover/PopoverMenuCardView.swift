@@ -109,11 +109,6 @@ struct PopoverMenuCardView: View {
                             .foregroundStyle(remainingTextColor)
                     }
                 }
-                if let summary = appState.subscriptionSummary(for: quota.provider) {
-                    Text(LFormat("本月估算 %@ · 套餐 %@", summary.estimatedText, summary.planText))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.tokenMuted)
-                }
                 Text(L("状态栏显示所选圆环"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.tokenMuted)
@@ -164,6 +159,10 @@ struct PopoverMenuCardView: View {
         }
     }
 
+    private var cursorResetDate: Date? {
+        quota.windows.compactMap(\.resetsAt).first
+    }
+
     private var displayedWindows: [QuotaWindow] {
         if quota.provider == .kimi, appState.settings.kimiDisplayMode == .code {
             let code = quota.windows.filter { ($0.title ?? "").localizedCaseInsensitiveContains("code") }
@@ -188,6 +187,11 @@ struct PopoverMenuCardView: View {
             } else {
                 Text(L("暂未读取到花费"))
                     .font(.body)
+                    .foregroundStyle(Color.tokenMuted)
+            }
+            if let reset = cursorResetDate {
+                Text(LFormat("重置 %@  ·  还有 %@", QuotaResetFormat.absolute(reset), QuotaResetFormat.relative(reset)))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.tokenMuted)
             }
             if let used = quota.metrics?.cursorModelsUsed {

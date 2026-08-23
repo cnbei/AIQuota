@@ -5,27 +5,38 @@ import SQLite3
 
 enum KimiWebAuth {
     static func resolveToken() -> String? {
+        harvestDesktopRefresh()
+
         let stored = [
             ProcessInfo.processInfo.environment["KIMI_AUTH_TOKEN"],
+            loadDaimonTokens().access,
             TokenStepSecrets.get(.kimiAccessToken),
             loadStoredToken()
         ]
         .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty && looksLikeSession($0) }
+        .filter { !$0.isEmpty && looksLikeSession($0) && isAccessToken($0) }
 
         if let fresh = stored.first(where: isFresh) {
+            try? saveStoredToken(fresh)
             return fresh
         }
         if let imported = importFreshFromBrowsers() {
             return imported
         }
-        // JWT exp is a hint, not the API. Keep the last session so a
-        // stale cookie still reaches GetSubscriptionStats, like the
-        // standalone AIQuota client did.
+        // Desktop access lasts ~15 minutes. Use it until the clock
+        // says it expired, then refresh. JWT exp is still only a hint
+        // for the final stale fallback.
+        if let usable = stored.first(where: { !QuotaAuth.needsRefresh($0, leeway: 0) }) {
+            return usable
+        }
+        if let refreshed = refreshAccessToken() {
+            return refreshed
+        }
         return stored.first
     }
 
     static func importFreshFromBrowsers() -> String? {
+        harvestDesktopRefresh()
         let tokens = [
             importFromKimiDesktop(),
             importViaPythonHelper(),
@@ -38,6 +49,73 @@ enum KimiWebAuth {
         return token
     }
 
+    static func refreshAccessToken() -> String? {
+        let refresh = [
+            loadStoredRefresh(),
+            loadDaimonTokens().refresh,
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { looksLikeSession($0) && isRefreshToken($0) }
+        guard let refresh else { return nil }
+
+        for url in refreshEndpoints {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 8
+            request.setValue("Bearer \(refresh)", forHTTPHeaderField: "Authorization")
+            request.setValue("kimi-auth=\(refresh)", forHTTPHeaderField: "Cookie")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("https://www.kimi.com", forHTTPHeaderField: "Origin")
+            request.setValue("https://www.kimi.com/", forHTTPHeaderField: "Referer")
+            request.setValue(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+                forHTTPHeaderField: "User-Agent"
+            )
+            guard let object = try? HTTPJSONClient.jsonObject(for: request) as? [String: Any],
+                  let tokens = tokens(fromRefreshResponse: object)
+            else { continue }
+            try? saveStoredToken(tokens.access)
+            if let next = tokens.refresh {
+                saveStoredRefresh(next)
+            }
+            return tokens.access
+        }
+        return nil
+    }
+
+    static func tokens(fromRefreshResponse object: [String: Any]) -> (access: String, refresh: String?)? {
+        let access = stringValue(object["access_token"] ?? object["accessToken"])
+        guard let access, looksLikeSession(access), isAccessToken(access) else {
+            return nil
+        }
+        let refresh = stringValue(object["refresh_token"] ?? object["refreshToken"])
+        return (access, refresh.flatMap { looksLikeSession($0) ? $0 : nil })
+    }
+
+    static func desktopTokens(fromDaimon object: [String: Any]) -> (access: String?, refresh: String?) {
+        let credentials = object["credentials"] as? [String: Any]
+        let web = (credentials?["kimiWeb"] as? [String: Any])
+            ?? (credentials?["kimi_web"] as? [String: Any])
+            ?? [:]
+        let access = stringValue(web["accessToken"] ?? web["access_token"])
+        let refresh = stringValue(web["refreshToken"] ?? web["refresh_token"])
+        return (
+            access.flatMap { looksLikeSession($0) && isAccessToken($0) ? $0 : nil },
+            refresh.flatMap { looksLikeSession($0) && isRefreshToken($0) ? $0 : nil }
+        )
+    }
+
+    static func loadDaimonTokens(from url: URL? = nil) -> (access: String?, refresh: String?) {
+        let target = url ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/kimi-desktop/daimon-share/daimon/config.json")
+        guard let data = try? Data(contentsOf: target),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return (nil, nil)
+        }
+        return desktopTokens(fromDaimon: object)
+    }
+
     static func isFresh(_ token: String) -> Bool {
         looksLikeSession(token) && isAccessToken(token) && !QuotaAuth.needsRefresh(token)
     }
@@ -46,6 +124,10 @@ enum KimiWebAuth {
         let typ = (QuotaAuth.jwtPayload(token)?["typ"] as? String)?.lowercased()
         if typ == "refresh" { return false }
         return typ == "access" || typ == nil
+    }
+
+    static func isRefreshToken(_ token: String) -> Bool {
+        (QuotaAuth.jwtPayload(token)?["typ"] as? String)?.lowercased() == "refresh"
     }
 
     static func saveStoredToken(_ token: String) throws {
@@ -62,7 +144,9 @@ enum KimiWebAuth {
 
     static func clearStoredToken() {
         TokenStepSecrets.delete(.kimiAccessToken)
+        TokenStepSecrets.delete(.kimiRefreshToken)
         try? FileManager.default.removeItem(at: storageURL())
+        try? FileManager.default.removeItem(at: refreshStorageURL())
     }
 
     static func loadStoredToken() -> String? {
@@ -88,6 +172,54 @@ enum KimiWebAuth {
 
     private static func storageURL() -> URL {
         AppPaths.appSupportRoot.appendingPathComponent("kimi-auth")
+    }
+
+    private static func refreshStorageURL() -> URL {
+        AppPaths.appSupportRoot.appendingPathComponent("kimi-refresh")
+    }
+
+    private static func harvestDesktopRefresh() {
+        if let refresh = loadDaimonTokens().refresh {
+            saveStoredRefresh(refresh)
+        }
+    }
+
+    static func saveStoredRefresh(_ token: String) {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard looksLikeSession(trimmed), isRefreshToken(trimmed) else { return }
+        TokenStepSecrets.set(.kimiRefreshToken, value: trimmed)
+        let url = refreshStorageURL()
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? trimmed.data(using: .utf8)?.write(to: url, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    static func loadStoredRefresh() -> String? {
+        if let stored = TokenStepSecrets.get(.kimiRefreshToken), looksLikeSession(stored), isRefreshToken(stored) {
+            return stored
+        }
+        guard let data = try? Data(contentsOf: refreshStorageURL()),
+              let text = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              looksLikeSession(text),
+              isRefreshToken(text)
+        else {
+            return nil
+        }
+        return text
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        guard let text = value as? String else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static var refreshEndpoints: [URL] {
+        [
+            "https://www.kimi.com/api/auth/token/refresh",
+            "https://kimi.moonshot.cn/api/auth/token/refresh"
+        ].compactMap(URL.init(string:))
     }
 
     private static var aiquotaStorageURL: URL {
@@ -152,6 +284,9 @@ enum KimiWebAuth {
     }
 
     private static func importFromKimiDesktop() -> String? {
+        if let access = loadDaimonTokens().access, isFresh(access) {
+            return access
+        }
         if let cookie = importFromKimiDesktopCookies(), isFresh(cookie) {
             return cookie
         }

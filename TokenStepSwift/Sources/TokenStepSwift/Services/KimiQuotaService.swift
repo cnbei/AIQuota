@@ -75,13 +75,38 @@ enum KimiQuotaService {
     }
 
     private static func recoverAfterUnauthorized(current: String) -> ProviderQuota? {
-        guard let fresh = KimiWebAuth.importFreshFromBrowsers(), fresh != current else {
-            return nil
+        if let fresh = KimiWebAuth.importFreshFromBrowsers(),
+           fresh != current,
+           let quota = try? readMembership(token: fresh),
+           quota.isAvailable {
+            return quota
         }
-        guard let quota = try? readMembership(token: fresh), quota.isAvailable else {
-            return nil
+        if let refreshed = KimiWebAuth.refreshAccessToken(),
+           refreshed != current,
+           let quota = try? readMembership(token: refreshed),
+           quota.isAvailable {
+            return quota
         }
-        return quota
+        return nil
+    }
+
+    static func percent(fromRatio value: Double) -> Double {
+        let used = value <= 1.0001 ? value * 100 : value
+        return min(max(used, 0), 100)
+    }
+
+    static func codeUsedPercent(from payload: Any, windows: [QuotaWindow]) -> Double? {
+        let object = (payload as? [String: Any]) ?? [:]
+        let balance = (object["subscriptionBalance"] as? [String: Any])
+            ?? (object["subscription_balance"] as? [String: Any])
+            ?? [:]
+        let fromRatio = QuotaJSON.number(balance["kimiCodeUsedRatio"] ?? balance["kimi_code_used_ratio"])
+            .map(percent(fromRatio:))
+        let fromWindows = windows
+            .filter { ($0.title ?? "").localizedCaseInsensitiveContains("code") }
+            .map(\.usedPercent)
+            .max()
+        return [fromRatio, fromWindows].compactMap { $0 }.max()
     }
 
     static func windows(from payload: Any) -> [QuotaWindow] {
@@ -111,11 +136,11 @@ enum KimiQuotaService {
 
         var result: [QuotaWindow] = []
         if let ratio = QuotaJSON.number(balance["amountUsedRatio"] ?? balance["amount_used_ratio"]) {
-            let used = ratio <= 1.0001 ? ratio * 100 : ratio
+            let used = percent(fromRatio: ratio)
             result.append(
                 QuotaWindow(
                     kind: .monthlyCredits,
-                    usedPercent: min(max(used, 0), 100),
+                    usedPercent: used,
                     remaining: min(max(100 - used, 0), 100),
                     total: 100,
                     resetsAt: QuotaAuth.date(from: balance["expireTime"] ?? balance["expire_time"]),
@@ -130,7 +155,7 @@ enum KimiQuotaService {
                 let ratio = QuotaJSON.number(row["ratio"])
                 let used: Double?
                 if let ratio {
-                    used = ratio <= 1.0001 ? ratio * 100 : ratio
+                    used = percent(fromRatio: ratio)
                 } else if row["enabled"] as? Bool == true {
                     used = 0
                 } else {
@@ -176,10 +201,7 @@ enum KimiQuotaService {
             throw TokenStepError.message(L("Kimi 额度暂不可用"))
         }
         let membershipUsed = parsed.first(where: { $0.kind == .monthlyCredits })?.usedPercent
-        let codeUsed = parsed
-            .filter { ($0.title ?? "").localizedCaseInsensitiveContains("code") }
-            .map(\.usedPercent)
-            .max()
+        let codeUsed = codeUsedPercent(from: object, windows: parsed)
         let metrics = QuotaMetrics(kimiMembershipUsed: membershipUsed, kimiCodeUsed: codeUsed)
         return ProviderQuota(
             provider: .kimi,
@@ -274,6 +296,13 @@ enum KimiQuotaService {
                 var merged = result[index]
                 if merged.resetsAt == nil {
                     merged.resetsAt = window.resetsAt
+                }
+                if merged.usedPercent <= 0, window.usedPercent > 0 {
+                    merged.usedPercent = window.usedPercent
+                    merged.remaining = window.remaining
+                    if let total = window.total {
+                        merged.total = total
+                    }
                 }
                 result[index] = merged
             } else {

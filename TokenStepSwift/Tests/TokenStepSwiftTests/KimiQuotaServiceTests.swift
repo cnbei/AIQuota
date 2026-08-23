@@ -53,9 +53,81 @@ final class KimiQuotaServiceTests: XCTestCase {
     func testRejectsRefreshJWTAndAcceptsAccessJWT() {
         XCTAssertTrue(KimiWebAuth.isAccessToken(Self.jwt(typ: "access", expOffset: 3600)))
         XCTAssertFalse(KimiWebAuth.isAccessToken(Self.jwt(typ: "refresh", expOffset: 3600)))
+        XCTAssertTrue(KimiWebAuth.isRefreshToken(Self.jwt(typ: "refresh", expOffset: 8_000_000)))
+        XCTAssertFalse(KimiWebAuth.isRefreshToken(Self.jwt(typ: "access", expOffset: 3600)))
         XCTAssertTrue(KimiWebAuth.isFresh(Self.jwt(typ: "access", expOffset: 3600)))
         XCTAssertFalse(KimiWebAuth.isFresh(Self.jwt(typ: "refresh", expOffset: 8_000_000)))
         XCTAssertFalse(KimiWebAuth.isFresh(Self.jwt(typ: "access", expOffset: -60)))
+    }
+
+    func testReadsDaimonKimiWebTokens() {
+        let access = Self.jwt(typ: "access", expOffset: 3600)
+        let refresh = Self.jwt(typ: "refresh", expOffset: 8_000_000)
+        let tokens = KimiWebAuth.desktopTokens(fromDaimon: [
+            "credentials": [
+                "kimiWeb": [
+                    "accessToken": access,
+                    "refreshToken": refresh
+                ]
+            ]
+        ])
+        XCTAssertEqual(tokens.access, access)
+        XCTAssertEqual(tokens.refresh, refresh)
+    }
+
+    func testIgnoresDaimonApiKeyAndRefreshAsAccess() {
+        let tokens = KimiWebAuth.desktopTokens(fromDaimon: [
+            "credentials": [
+                "kimiCode": [
+                    "apiKey": "sk-kimi-not-a-session"
+                ],
+                "kimiWeb": [
+                    "accessToken": Self.jwt(typ: "refresh", expOffset: 8_000_000),
+                    "refreshToken": "not-a-jwt"
+                ]
+            ]
+        ])
+        XCTAssertNil(tokens.access)
+        XCTAssertNil(tokens.refresh)
+    }
+
+    func testParsesRefreshResponse() {
+        let access = Self.jwt(typ: "access", expOffset: 900)
+        let refresh = Self.jwt(typ: "refresh", expOffset: 8_000_000)
+        let tokens = KimiWebAuth.tokens(fromRefreshResponse: [
+            "access_token": access,
+            "refresh_token": refresh
+        ])
+        XCTAssertEqual(tokens?.access, access)
+        XCTAssertEqual(tokens?.refresh, refresh)
+        XCTAssertNil(KimiWebAuth.tokens(fromRefreshResponse: [
+            "access_token": refresh
+        ]))
+    }
+
+    func testUsesKimiCodeUsedRatioForCodeMetric() {
+        let payload: [String: Any] = [
+            "subscriptionBalance": [
+                "amountUsedRatio": 0.8698,
+                "kimiCodeUsedRatio": 0.0573
+            ],
+            "ratelimitCode5h": [
+                "enabled": true,
+                "ratio": 0.0169
+            ],
+            "ratelimitCode7d": [
+                "enabled": true,
+                "ratio": 0.0034
+            ]
+        ]
+        let windows = KimiQuotaService.windows(from: payload)
+        XCTAssertEqual(windows[0].usedPercent, 86.98, accuracy: 0.01)
+        XCTAssertEqual(windows[1].usedPercent, 1.69, accuracy: 0.01)
+        XCTAssertEqual(
+            KimiQuotaService.codeUsedPercent(from: payload, windows: windows),
+            5.73,
+            accuracy: 0.01
+        )
     }
 
     func testUnauthorizedDetectionFollowsHTTPStatus() {

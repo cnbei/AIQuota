@@ -6,6 +6,7 @@ enum TokenStepSecrets {
     enum Account: String {
         case glmAPIKey = "glm-api-key"
         case kimiAccessToken = "kimi-access-token"
+        case kimiRefreshToken = "kimi-refresh-token"
         case grokAccessToken = "grok-access-token"
     }
 

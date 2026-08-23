@@ -46,9 +46,27 @@ def jwt_is_access(token: str) -> bool:
 
 
 def from_kimi_desktop() -> str | None:
+    if token := from_kimi_desktop_daimon():
+        return token
     if token := from_kimi_desktop_cookies():
         return token
     return from_kimi_desktop_local_storage()
+
+
+def from_kimi_desktop_daimon() -> str | None:
+    path = (
+        Path.home()
+        / "Library/Application Support/kimi-desktop/daimon-share/daimon/config.json"
+    )
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    web = ((payload.get("credentials") or {}).get("kimiWeb") or {})
+    access = str(web.get("accessToken") or web.get("access_token") or "").strip()
+    if access and jwt_fresh(access) and jwt_is_access(access):
+        return access
+    return None
 
 
 def from_kimi_desktop_cookies() -> str | None:

@@ -78,7 +78,7 @@ enum SubscriptionLedger {
         case .kimi:
             return ["Kimi", "Kimi Code"]
         case .grok:
-            return ["Grok", "Grok CLI"]
+            return ["Grok", "Grok Build", "Grok CLI"]
         }
     }
 

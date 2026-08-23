@@ -40,10 +40,9 @@ enum UsageProbeCheck {
         """.write(to: log, atomically: true, encoding: .utf8)
 
         let snapshot = UsageCollector.collectUsageSnapshotForTests(
-            grokUnifiedLogURLs: [log],
-            includeExperimentalAgentSources: true
+            grokUnifiedLogURLs: [log]
         )
-        try expect(snapshot.sources["Grok CLI"]?.status == "ok", "grok status")
+        try expect(snapshot.sources["Grok Build"]?.status == "ok", "grok status")
         try expect(snapshot.totals.tokens == 120, "grok tokens")
     }
 

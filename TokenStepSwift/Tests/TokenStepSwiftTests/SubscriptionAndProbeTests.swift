@@ -125,12 +125,26 @@ final class SubscriptionAndProbeTests: XCTestCase {
         """.write(to: log, atomically: true, encoding: .utf8)
 
         let snapshot = UsageCollector.collectUsageSnapshotForTests(
-            grokUnifiedLogURLs: [log],
-            includeExperimentalAgentSources: true
+            grokUnifiedLogURLs: [log]
         )
-        XCTAssertEqual(snapshot.sources["Grok CLI"]?.status, "ok")
-        XCTAssertEqual(snapshot.sources["Grok CLI"]?.records, 1)
+        XCTAssertEqual(snapshot.sources["Grok Build"]?.status, "ok")
+        XCTAssertEqual(snapshot.sources["Grok Build"]?.records, 1)
+        XCTAssertEqual(snapshot.daily.first?.tools["Grok Build"], 120)
         XCTAssertEqual(snapshot.totals.tokens, 120)
+    }
+
+    func testCollectionStateIncludesGrokLogWithoutExperimentalFlag() throws {
+        let home = try makeTempDir("grok-home")
+        let log = home.appendingPathComponent(".grok/logs/unified.jsonl")
+        try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: log)
+
+        let state = UsageCollector.collectionState(
+            historyDays: 30,
+            includeExperimentalAgentSources: false,
+            homeURL: home
+        )
+        XCTAssertTrue(state.files.contains(where: { $0.path == log.path }))
     }
 
     func testClineCollectorReadsTokensInWithoutMessageText() throws {

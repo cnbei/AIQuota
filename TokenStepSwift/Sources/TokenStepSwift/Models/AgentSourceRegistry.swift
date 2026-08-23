@@ -66,6 +66,16 @@ enum AgentSourceRegistry {
             rankClientKeys: []
         ),
         AgentSourceDescriptor(
+            id: "grok-cli",
+            displayName: "Grok Build",
+            tier: .ledger,
+            colorToken: AgentSourceColorToken(red: 0.78, green: 0.32, blue: 0.24),
+            isExperimental: false,
+            probePaths: ["~/.grok/logs/unified.jsonl"],
+            aliases: ["Grok CLI"],
+            rankClientKeys: ["grok-cli"]
+        ),
+        AgentSourceDescriptor(
             id: "zcode",
             displayName: "ZCode",
             tier: .ledger,
@@ -104,16 +114,6 @@ enum AgentSourceRegistry {
             probePaths: ["~/.kimi-code/sessions", "~/.kimi/sessions"],
             aliases: ["Kimi CLI"],
             rankClientKeys: ["kimi-code"]
-        ),
-        AgentSourceDescriptor(
-            id: "grok-cli",
-            displayName: "Grok CLI",
-            tier: .ledger,
-            colorToken: AgentSourceColorToken(red: 0.78, green: 0.32, blue: 0.24),
-            isExperimental: true,
-            probePaths: ["~/.grok/logs/unified.jsonl"],
-            aliases: [],
-            rankClientKeys: ["grok-cli"]
         ),
         AgentSourceDescriptor(
             id: "opencode",
@@ -223,12 +223,13 @@ enum AgentSourceRegistry {
             "Codex",
             "Claude Code",
             "Cursor",
+            "Grok Build",
+            "Grok CLI",
             "ZCode",
             "Hermes",
             "Hermes Agent",
             "WorkBuddy",
             "Kimi Code",
-            "Grok CLI",
             "OpenCode",
             "Cline",
             "Cherry Studio",

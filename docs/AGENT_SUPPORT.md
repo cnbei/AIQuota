@@ -8,6 +8,7 @@ TokenStep 的原则是：能从本地日志中稳定读到 token 数，才进入
 | --- | --- | --- | --- |
 | Codex | 已支持 | `~/.codex/sessions` / `~/.codex/archived_sessions`，必要时回退 SQLite | 读取本地 token_count 事件，只统计数量；可选读取 5h / 7d 额度。 |
 | Claude Code | 已支持 | `~/.claude/projects` | 读取 assistant message 的 usage 字段，按 `message.id` 去重，避免 thinking / text / tool_use 多行重复累计；可选通过 Claude Code 本机钥匙串凭证读取 usage 额度。 |
+| Grok Build | 已支持 | `~/.grok/logs/unified.jsonl` 的 `shell.turn.inference_done` | 读取 `prompt_tokens` / `cached_prompt_tokens` / `completion_tokens` / `reasoning_tokens`，默认计入圆环与总量。sessions 对话文件不读。 |
 
 ## 实验支持：CC Switch Proxy
 
@@ -81,7 +82,6 @@ TokenStep 采用：
 | Agent | 数据来源 | 说明 |
 | --- | --- | --- |
 | Kimi Code | `~/.kimi-code/sessions/**/wire.jsonl` 的 `usage.record` | 本机已读到 `inputOther` / `output` / `inputCacheRead` / `inputCacheCreation`。同一条 usage 也会出现在 `context.append_loop_event`，只计 `usage.record`。 |
-| Grok CLI | `~/.grok/logs/unified.jsonl` 的 `shell.turn.inference_done` | 本机已读到 `prompt_tokens` / `cached_prompt_tokens` / `completion_tokens` / `reasoning_tokens`。sessions 对话文件不读。 |
 | OpenCode | `~/.local/share/opencode` 的 `opencode*.db` 与 `storage/message` | 只取 tokens / usage 对象；结构对不上则 `discovered_no_usage`。 |
 | Cline | VS Code / Cursor `saoudrizwan.claude-dev/tasks/**/ui_messages.json` | 只取带 `tokensIn` / `tokensOut` 的记录，不解析对话正文。 |
 | Cherry Studio | `CherryStudio/.claude/projects` | 按 Claude 形态的 `message.usage` 读取。 |

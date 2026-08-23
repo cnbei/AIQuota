@@ -68,6 +68,7 @@ AIQuota 适合这些人：
 
 - Codex：读取本地 JSONL 用量元数据并维护逐会话增量缓存；缓存异常时自动重建，必要时回退 Codex 本地 SQLite 汇总。
 - Claude Code：读取 `~/.claude/projects/**/*.jsonl` 里的 usage 元数据。
+- Grok Build：读取 `~/.grok/logs/unified.jsonl` 的 `shell.turn.inference_done` usage 字段，默认计入圆环。
 - CC Switch：实验支持，读取本机 `proxy_request_logs` 中成功且 token 数大于 0 的请求行。
 - 额度显示：Codex 读取本机 Codex 账户限额；Claude Code 会在本机读取 Claude Code 钥匙串凭证，并请求 Anthropic usage 接口获取 5 小时 / 7 天剩余额度。
 

@@ -29,7 +29,7 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.sources["ZCode"]?.status, "disabled")
         XCTAssertEqual(snapshot.sources["Hermes Agent"]?.status, "disabled")
         XCTAssertEqual(snapshot.sources["Kimi Code"]?.status, "disabled")
-        XCTAssertEqual(snapshot.sources["Grok CLI"]?.status, "disabled")
+        XCTAssertEqual(snapshot.sources["Grok Build"]?.status, "missing")
         XCTAssertEqual(snapshot.sources["OpenCode"]?.status, "disabled")
         XCTAssertEqual(snapshot.sources["Cline"]?.status, "disabled")
         XCTAssertEqual(snapshot.sources["Cherry Studio"]?.status, "disabled")

@@ -10,6 +10,8 @@ final class AgentSourceRegistryTests: XCTestCase {
         XCTAssertEqual(AgentSourceRegistry.displayName(for: "workbuddy"), "WorkBuddy")
         XCTAssertEqual(AgentSourceRegistry.descriptor(for: "Kimi Code")?.id, "kimi-code")
         XCTAssertEqual(AgentSourceRegistry.descriptor(for: "Grok CLI")?.tier, .ledger)
+        XCTAssertEqual(AgentSourceRegistry.descriptor(for: "Grok CLI")?.displayName, "Grok Build")
+        XCTAssertEqual(AgentSourceRegistry.descriptor(for: "Grok Build")?.isExperimental, false)
         XCTAssertTrue(AgentSourceRegistry.ledgerSources.contains(where: { $0.id == "opencode" && $0.isExperimental }))
     }
 

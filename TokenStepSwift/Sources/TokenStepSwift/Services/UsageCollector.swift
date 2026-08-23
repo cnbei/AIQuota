@@ -37,6 +37,7 @@ enum UsageCollector {
     private static let timezone = TimeZone(identifier: "Asia/Shanghai") ?? .current
     private static let maxRelevantLineBytes = 1_048_576
     private static let ccSwitchSourceName = "CC Switch Proxy"
+    private static let grokBuildSourceName = "Grok Build"
 
     static func collect(
         historyDays: Int = TokenStepSettings.defaults.historyDays,
@@ -71,6 +72,10 @@ enum UsageCollector {
         var codex = codexOutcome.result
         codex.source.recalibratedFromRevision = cacheLoad.recalibratedFromRevision
         let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        let grok = collectGrokCLIUsage(
+            logURLs: grokUnifiedLogURLs,
+            modifiedSince: sourceCutoff
+        )
         let experimental = collectExperimentalAgentSources(
             enabled: includeExperimentalAgentSources,
             modifiedSince: sourceCutoff,
@@ -78,7 +83,6 @@ enum UsageCollector {
             hermesDatabaseURL: hermesDatabaseURL,
             workBuddyRootURLs: workBuddyRootURLs,
             kimiCodeRootURLs: kimiCodeRootURLs,
-            grokUnifiedLogURLs: grokUnifiedLogURLs,
             openCodeRootURLs: openCodeRootURLs,
             clineRootURLs: clineRootURLs,
             cherryRootURLs: cherryRootURLs
@@ -99,13 +103,14 @@ enum UsageCollector {
             ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
         }
         let records = recordsInHistoryWindow(
-            deduped.records + experimental.records,
+            deduped.records + grok.records + experimental.records,
             historyDays: historyDays,
             now: Date()
         )
         var sources: [String: SourceInfo] = [
             "Codex": codex.source,
             "Claude Code": claude.source,
+            grokBuildSourceName: grok.source,
             ccSwitchSourceName: ccSwitch.source
         ]
         sources.merge(experimental.sources) { _, new in new }
@@ -136,6 +141,11 @@ enum UsageCollector {
         ]
         urls.append(contentsOf: existingDatabaseFiles(databases))
 
+        let grokLog = homeURL.appendingPathComponent(".grok/logs/unified.jsonl")
+        if FileManager.default.fileExists(atPath: grokLog.path) {
+            urls.append(grokLog)
+        }
+
         if includeExperimentalAgentSources {
             urls.append(contentsOf: existingDatabaseFiles([
                 homeURL.appendingPathComponent(".zcode/cli/db/db.sqlite"),
@@ -147,10 +157,6 @@ enum UsageCollector {
                 homeURL.appendingPathComponent(".kimi-code/sessions", isDirectory: true),
                 homeURL.appendingPathComponent(".kimi/sessions", isDirectory: true)
             ].flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) })
-            let grokLog = homeURL.appendingPathComponent(".grok/logs/unified.jsonl")
-            if FileManager.default.fileExists(atPath: grokLog.path) {
-                urls.append(grokLog)
-            }
             let openCodeRoots = [
                 homeURL.appendingPathComponent(".local/share/opencode", isDirectory: true),
                 homeURL.appendingPathComponent(".opencode", isDirectory: true)
@@ -454,6 +460,10 @@ enum UsageCollector {
         var ccSwitch = ccSwitchDatabaseURL.map {
             collectCCSwitchProxyUsage(databaseURL: $0)
         } ?? CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
+        let grok = collectGrokCLIUsage(
+            logURLs: grokUnifiedLogURLs ?? [],
+            modifiedSince: nil
+        )
         let experimental = collectExperimentalAgentSources(
             enabled: includeExperimentalAgentSources,
             modifiedSince: nil,
@@ -461,7 +471,6 @@ enum UsageCollector {
             hermesDatabaseURL: hermesDatabaseURL,
             workBuddyRootURLs: workBuddyRootURLs,
             kimiCodeRootURLs: kimiCodeRootURLs,
-            grokUnifiedLogURLs: grokUnifiedLogURLs,
             openCodeRootURLs: openCodeRootURLs,
             clineRootURLs: clineRootURLs,
             cherryRootURLs: cherryRootURLs
@@ -471,13 +480,14 @@ enum UsageCollector {
             proxyRecords: ccSwitch.records
         )
         ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
-        let allRecords = deduped.records + experimental.records
+        let allRecords = deduped.records + grok.records + experimental.records
         let records = historyDays.map {
             recordsInHistoryWindow(allRecords, historyDays: $0, now: now)
         } ?? allRecords
         var sources: [String: SourceInfo] = [
             "Codex": codex.source,
             "Claude Code": claude.source,
+            grokBuildSourceName: grok.source,
             ccSwitchSourceName: ccSwitch.source
         ]
         sources.merge(experimental.sources) { _, new in new }
@@ -2233,7 +2243,6 @@ enum UsageCollector {
         "Hermes Agent",
         "WorkBuddy",
         "Kimi Code",
-        "Grok CLI",
         "OpenCode",
         "Cline",
         "Cherry Studio"
@@ -2246,7 +2255,6 @@ enum UsageCollector {
         hermesDatabaseURL: URL?,
         workBuddyRootURLs: [URL]?,
         kimiCodeRootURLs: [URL]?,
-        grokUnifiedLogURLs: [URL]?,
         openCodeRootURLs: [URL]?,
         clineRootURLs: [URL]?,
         cherryRootURLs: [URL]?
@@ -2262,7 +2270,6 @@ enum UsageCollector {
             || hermesDatabaseURL != nil
             || workBuddyRootURLs != nil
             || kimiCodeRootURLs != nil
-            || grokUnifiedLogURLs != nil
             || openCodeRootURLs != nil
             || clineRootURLs != nil
             || cherryRootURLs != nil
@@ -2278,10 +2285,6 @@ enum UsageCollector {
         )
         let kimi = collectKimiCodeUsage(
             rootURLs: isolated ? (kimiCodeRootURLs ?? []) : kimiCodeRootURLs,
-            modifiedSince: cutoffDate
-        )
-        let grok = collectGrokCLIUsage(
-            logURLs: isolated ? (grokUnifiedLogURLs ?? []) : grokUnifiedLogURLs,
             modifiedSince: cutoffDate
         )
         let openCode = collectOpenCodeUsage(
@@ -2301,7 +2304,6 @@ enum UsageCollector {
             ("Hermes Agent", hermes),
             ("WorkBuddy", workBuddy),
             ("Kimi Code", kimi),
-            ("Grok CLI", grok),
             ("OpenCode", openCode),
             ("Cline", cline),
             ("Cherry Studio", cherry)
@@ -2379,12 +2381,22 @@ enum UsageCollector {
         file.pathComponents.reversed().first { $0.hasPrefix("session_") }
     }
 
+    private static func defaultGrokUnifiedLogURL() -> URL {
+        grokHomeURL().appendingPathComponent("logs/unified.jsonl")
+    }
+
+    private static func grokHomeURL() -> URL {
+        if let home = ProcessInfo.processInfo.environment["GROK_HOME"], !home.isEmpty {
+            return URL(fileURLWithPath: home, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".grok")
+    }
+
     private static func collectGrokCLIUsage(
         logURLs: [URL]?,
         modifiedSince cutoffDate: Date?
     ) -> CollectorResult {
-        let defaultLog = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".grok/logs/unified.jsonl")
+        let defaultLog = defaultGrokUnifiedLogURL()
         let files = (logURLs ?? [defaultLog]).filter { url in
             guard FileManager.default.fileExists(atPath: url.path) else { return false }
             if let cutoffDate,
@@ -2429,7 +2441,7 @@ enum UsageCollector {
                 records.append(UsageRecord(
                     date: day,
                     timestamp: timestampText.isEmpty ? nil : timestampText,
-                    tool: "Grok CLI",
+                    tool: grokBuildSourceName,
                     model: modelKey(ctx["model"] as? String ?? "grok"),
                     usage: usage,
                     source: .grokCLI,

@@ -483,6 +483,7 @@ enum TodaySourceRows {
         if available.contains("Cursor"), isCursorModel(key) { return "Cursor" }
         if available.contains("Codex"), isCodexModel(key) { return "Codex" }
         if available.contains("Claude Code"), isClaudeModel(key) { return "Claude Code" }
+        if available.contains("Antigravity"), isGeminiModel(key) { return "Antigravity" }
         if available.contains("Codex via CC Switch"), isCodexModel(key) { return "Codex via CC Switch" }
         if available.contains("Claude Code via CC Switch"), isClaudeModel(key) { return "Claude Code via CC Switch" }
         return available.count == 1 ? available.first : nil
@@ -498,6 +499,10 @@ enum TodaySourceRows {
 
     private static func isClaudeModel(_ key: String) -> Bool {
         key.contains("claude") || key.contains("sonnet") || key.contains("opus") || key.contains("haiku")
+    }
+
+    private static func isGeminiModel(_ key: String) -> Bool {
+        key.contains("gemini") || key.contains("antigravity")
     }
 
     private static func cost(

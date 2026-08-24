@@ -12,6 +12,8 @@ enum UsageSourceWatchRoots {
             homeURL.appendingPathComponent(".kimi-code/sessions", isDirectory: true),
             homeURL.appendingPathComponent(".kimi/sessions", isDirectory: true),
             homeURL.appendingPathComponent(".grok/logs", isDirectory: true),
+            homeURL.appendingPathComponent(".gemini/antigravity-cli/conversations", isDirectory: true),
+            homeURL.appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true),
             homeURL.appendingPathComponent(".local/share/opencode", isDirectory: true),
             homeURL.appendingPathComponent(".opencode", isDirectory: true),
             homeURL.appendingPathComponent(".cline/data/sessions", isDirectory: true),

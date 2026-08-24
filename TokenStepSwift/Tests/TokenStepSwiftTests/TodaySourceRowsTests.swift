@@ -75,6 +75,19 @@ final class TodaySourceRowsTests: XCTestCase {
         XCTAssertEqual(cursor?.models.map(\.name), ["Fable 5", "Grok 4.6"])
     }
 
+    func testInfersAntigravityModelsWhenToolMapIsMissing() {
+        let rows = TodaySourceRows.make(
+            tools: ["Antigravity": 200, "Codex": 100],
+            models: [
+                "gemini-3.7-flash": 200,
+                "gpt-5.4": 100
+            ]
+        )
+        let antigravity = rows.first { $0.name == "Antigravity" }
+        XCTAssertEqual(antigravity?.models.map(\.name), ["Gemini 3.7 Flash"])
+        XCTAssertEqual(antigravity?.models.first?.tokens, 200)
+    }
+
     func testModelCostRowsRankFableAboveGrokForTheSameTokens() {
         let rows = TodayModelCostRows.make(
             models: [

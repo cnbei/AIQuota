@@ -38,6 +38,7 @@ enum UsageCollector {
     private static let maxRelevantLineBytes = 1_048_576
     private static let ccSwitchSourceName = "CC Switch Proxy"
     private static let grokBuildSourceName = "Grok Build"
+    private static let antigravitySourceName = "Antigravity"
 
     static func collect(
         historyDays: Int = TokenStepSettings.defaults.historyDays,
@@ -49,6 +50,7 @@ enum UsageCollector {
         workBuddyRootURLs: [URL]? = nil,
         kimiCodeRootURLs: [URL]? = nil,
         grokUnifiedLogURLs: [URL]? = nil,
+        antigravityRootURLs: [URL]? = nil,
         openCodeRootURLs: [URL]? = nil,
         clineRootURLs: [URL]? = nil,
         cherryRootURLs: [URL]? = nil,
@@ -74,6 +76,10 @@ enum UsageCollector {
         let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         let grok = collectGrokCLIUsage(
             logURLs: grokUnifiedLogURLs,
+            modifiedSince: sourceCutoff
+        )
+        let antigravity = collectAntigravityUsage(
+            rootURLs: antigravityRootURLs,
             modifiedSince: sourceCutoff
         )
         let experimental = collectExperimentalAgentSources(
@@ -103,7 +109,7 @@ enum UsageCollector {
             ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
         }
         let records = recordsInHistoryWindow(
-            deduped.records + grok.records + experimental.records,
+            deduped.records + grok.records + antigravity.records + experimental.records,
             historyDays: historyDays,
             now: Date()
         )
@@ -111,6 +117,7 @@ enum UsageCollector {
             "Codex": codex.source,
             "Claude Code": claude.source,
             grokBuildSourceName: grok.source,
+            antigravitySourceName: antigravity.source,
             ccSwitchSourceName: ccSwitch.source
         ]
         sources.merge(experimental.sources) { _, new in new }
@@ -145,6 +152,9 @@ enum UsageCollector {
         if FileManager.default.fileExists(atPath: grokLog.path) {
             urls.append(grokLog)
         }
+        urls.append(contentsOf: defaultAntigravityConversationRoots(homeURL: homeURL).flatMap {
+            Self.files(under: $0, pathExtensions: ["db"], modifiedSince: cutoff)
+        })
 
         if includeExperimentalAgentSources {
             urls.append(contentsOf: existingDatabaseFiles([
@@ -437,6 +447,7 @@ enum UsageCollector {
         workBuddyRootURLs: [URL]? = nil,
         kimiCodeRootURLs: [URL]? = nil,
         grokUnifiedLogURLs: [URL]? = nil,
+        antigravityRootURLs: [URL]? = nil,
         openCodeRootURLs: [URL]? = nil,
         clineRootURLs: [URL]? = nil,
         cherryRootURLs: [URL]? = nil,
@@ -464,6 +475,10 @@ enum UsageCollector {
             logURLs: grokUnifiedLogURLs ?? [],
             modifiedSince: nil
         )
+        let antigravity = collectAntigravityUsage(
+            rootURLs: antigravityRootURLs ?? [],
+            modifiedSince: nil
+        )
         let experimental = collectExperimentalAgentSources(
             enabled: includeExperimentalAgentSources,
             modifiedSince: nil,
@@ -480,7 +495,7 @@ enum UsageCollector {
             proxyRecords: ccSwitch.records
         )
         ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
-        let allRecords = deduped.records + grok.records + experimental.records
+        let allRecords = deduped.records + grok.records + antigravity.records + experimental.records
         let records = historyDays.map {
             recordsInHistoryWindow(allRecords, historyDays: $0, now: now)
         } ?? allRecords
@@ -488,6 +503,7 @@ enum UsageCollector {
             "Codex": codex.source,
             "Claude Code": claude.source,
             grokBuildSourceName: grok.source,
+            antigravitySourceName: antigravity.source,
             ccSwitchSourceName: ccSwitch.source
         ]
         sources.merge(experimental.sources) { _, new in new }
@@ -2461,6 +2477,107 @@ enum UsageCollector {
         )
     }
 
+    private static func defaultAntigravityConversationRoots(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [URL] {
+        var roots = [
+            homeURL.appendingPathComponent(".gemini/antigravity-cli/conversations", isDirectory: true),
+            homeURL.appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+        ]
+        if let home = ProcessInfo.processInfo.environment["GEMINI_CLI_HOME"], !home.isEmpty {
+            roots.insert(
+                URL(fileURLWithPath: home, isDirectory: true).appendingPathComponent("conversations", isDirectory: true),
+                at: 0
+            )
+        }
+        return roots
+    }
+
+    private static func collectAntigravityUsage(
+        rootURLs: [URL]?,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let roots = rootURLs ?? defaultAntigravityConversationRoots()
+        let discovered = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let files = discovered.flatMap {
+            self.files(under: $0, pathExtensions: ["db"], modifiedSince: cutoffDate)
+        }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for file in files {
+            records.append(contentsOf: collectAntigravityDatabase(file, seen: &seen))
+        }
+
+        return discoveredSourceResult(discoveredRoots: discovered, files: files, records: records)
+    }
+
+    private static func collectAntigravityDatabase(_ database: URL, seen: inout Set<String>) -> [UsageRecord] {
+        let columns = sqliteJSONRows(database: database, query: "pragma table_info(gen_metadata)")
+        guard columns != nil, !(columns ?? []).isEmpty else { return [] }
+        guard let rows = sqliteJSONRows(
+            database: database,
+            query: "select idx, hex(data) as data_hex from gen_metadata order by idx"
+        ) else {
+            return []
+        }
+
+        var sessionEpoch: TimeInterval?
+        if let trajectory = sqliteJSONRows(
+            database: database,
+            query: "select hex(data) as data_hex from trajectory_metadata_blob limit 1"
+        )?.first,
+           let hex = trajectory["data_hex"] as? String,
+           let blob = AntigravityUsageParser.data(fromHex: hex) {
+            sessionEpoch = AntigravityUsageParser.sessionCreatedEpoch(fromTrajectoryBlob: blob)
+        }
+        if sessionEpoch == nil,
+           let modified = try? database.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+            sessionEpoch = modified.timeIntervalSince1970
+        }
+
+        let blobs = rows.compactMap { row -> Data? in
+            guard let hex = row["data_hex"] as? String else { return nil }
+            return AntigravityUsageParser.data(fromHex: hex)
+        }
+        let sessionID = database.deletingPathExtension().lastPathComponent
+        var records: [UsageRecord] = []
+
+        for turn in AntigravityUsageParser.turns(
+            fromGenMetadataBlobs: blobs,
+            sessionCreatedEpoch: sessionEpoch
+        ) {
+            let requestID = turn.responseID ?? "\(database.path):\(turn.model):\(turn.totalTokens)"
+            guard seen.insert(requestID).inserted else { continue }
+            guard let timestamp = turn.timestampEpoch,
+                  let day = dayString(fromEpoch: timestamp)
+            else {
+                continue
+            }
+            let usage = canonicalUsageCounts(
+                rawInputTokens: turn.inputTokens,
+                outputTokens: turn.outputTokens,
+                cacheReadInputTokens: turn.cacheReadTokens,
+                reasoningOutputTokens: turn.reasoningTokens,
+                inputIncludesCachedTokens: false
+            )
+            guard usage.totalTokens > 0 else { continue }
+            records.append(UsageRecord(
+                date: day,
+                timestamp: isoString(fromEpoch: timestamp),
+                timestampEpoch: timestamp,
+                tool: antigravitySourceName,
+                model: modelKey(turn.model),
+                usage: usage,
+                source: .antigravity,
+                requestID: requestID,
+                sessionID: sessionID,
+                sourcePath: database.path
+            ))
+        }
+        return records
+    }
+
     private static func collectOpenCodeUsage(
         rootURLs: [URL]?,
         modifiedSince cutoffDate: Date?
@@ -3221,7 +3338,7 @@ enum UsageCollector {
 
     private static func isAgentWorkRecord(_ record: UsageRecord) -> Bool {
         switch record.source {
-        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy, .kimiCode, .grokCLI, .opencode, .cline, .cherry:
+        case .nativeCodex, .nativeCodexSQLite, .nativeClaudeCode, .ccSwitchProxy, .zcode, .hermes, .workbuddy, .kimiCode, .grokCLI, .antigravity, .opencode, .cline, .cherry:
             return true
         case .unknown:
             return false
@@ -4978,6 +5095,7 @@ private enum UsageRecordSource: String, Codable, Equatable {
     case workbuddy
     case kimiCode
     case grokCLI
+    case antigravity
     case opencode
     case cline
     case cherry

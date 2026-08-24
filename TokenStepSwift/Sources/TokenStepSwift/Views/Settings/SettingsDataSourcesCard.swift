@@ -216,6 +216,8 @@ enum AgentSourceCopy {
             return L("~/.kimi-code/sessions · wire.jsonl usage.record")
         case "grok-cli":
             return L("~/.grok/logs/unified.jsonl · Grok Build inference_done")
+        case "antigravity":
+            return L("~/.gemini/antigravity-cli/conversations · gen_metadata usage")
         case "opencode":
             return L("~/.local/share/opencode · 实验")
         case "cline":

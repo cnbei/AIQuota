@@ -76,6 +76,19 @@ enum AgentSourceRegistry {
             rankClientKeys: ["grok-cli"]
         ),
         AgentSourceDescriptor(
+            id: "antigravity",
+            displayName: "Antigravity",
+            tier: .ledger,
+            colorToken: AgentSourceColorToken(red: 0.26, green: 0.52, blue: 0.96),
+            isExperimental: false,
+            probePaths: [
+                "~/.gemini/antigravity-cli/conversations",
+                "~/.gemini/antigravity/conversations"
+            ],
+            aliases: ["Antigravity CLI", "agy"],
+            rankClientKeys: ["antigravity", "antigravity-cli"]
+        ),
+        AgentSourceDescriptor(
             id: "zcode",
             displayName: "ZCode",
             tier: .ledger,
@@ -225,6 +238,8 @@ enum AgentSourceRegistry {
             "Cursor",
             "Grok Build",
             "Grok CLI",
+            "Antigravity",
+            "Antigravity CLI",
             "ZCode",
             "Hermes",
             "Hermes Agent",

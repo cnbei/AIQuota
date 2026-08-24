@@ -147,6 +147,20 @@ final class SubscriptionAndProbeTests: XCTestCase {
         XCTAssertTrue(state.files.contains(where: { $0.path == log.path }))
     }
 
+    func testCollectionStateIncludesAntigravityWithoutExperimentalFlag() throws {
+        let home = try makeTempDir("agy-home")
+        let db = home.appendingPathComponent(".gemini/antigravity-cli/conversations/session.db")
+        try FileManager.default.createDirectory(at: db.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: db)
+
+        let state = UsageCollector.collectionState(
+            historyDays: 30,
+            includeExperimentalAgentSources: false,
+            homeURL: home
+        )
+        XCTAssertTrue(state.files.contains(where: { $0.path == db.path }))
+    }
+
     func testClineCollectorReadsTokensInWithoutMessageText() throws {
         let root = try makeTempDir("cline")
         let task = root.appendingPathComponent("task-1", isDirectory: true)

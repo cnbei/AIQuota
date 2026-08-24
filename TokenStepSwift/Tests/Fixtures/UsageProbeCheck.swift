@@ -6,6 +6,7 @@ enum UsageProbeCheck {
     static func main() throws {
         try testKimiCodeReadsUsageRecordOnly()
         try testGrokCLIReadsInferenceDone()
+        try testAntigravityReadsGenMetadataUsage()
         try testClineReadsTokensIn()
         try testCherryReadsClaudeUsage()
         try testOpenCodeReadsTokensObject()
@@ -44,6 +45,25 @@ enum UsageProbeCheck {
         )
         try expect(snapshot.sources["Grok Build"]?.status == "ok", "grok status")
         try expect(snapshot.totals.tokens == 120, "grok tokens")
+    }
+
+    private static func testAntigravityReadsGenMetadataUsage() throws {
+        let root = try makeTempDir("agy")
+        let database = root.appendingPathComponent("session.db")
+        try runSQLite(
+            database: database,
+            sql: """
+            create table gen_metadata (idx integer, data blob, size integer);
+            create table trajectory_metadata_blob (id text, data blob);
+            insert into trajectory_metadata_blob (id, data) values ('main', x'12080880c9e9b2061000');
+            insert into gen_metadata (idx, data, size) values (0, x'0a21220c080a1014480550015a0272319a011067656d696e692d332e372d666c617368', 0);
+            """
+        )
+
+        let snapshot = UsageCollector.collectUsageSnapshotForTests(antigravityRootURLs: [root])
+        try expect(snapshot.sources["Antigravity"]?.status == "ok", "antigravity status")
+        try expect(snapshot.totals.tokens == 36, "antigravity tokens got \(snapshot.totals.tokens)")
+        try expect(snapshot.daily.first?.models["gemini-3.7-flash"] == 36, "antigravity model")
     }
 
     private static func testClineReadsTokensIn() throws {
@@ -101,6 +121,24 @@ enum UsageProbeCheck {
         ])
         try expect(plans.count == 1, "zero price dropped")
         try expect(plans.first?.renewalDay == 28, "renewal day clamped")
+    }
+
+    private static func runSQLite(database: URL, sql: String) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [database.path, sql]
+        process.standardOutput = Pipe()
+        let standardError = Pipe()
+        process.standardError = standardError
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let message = String(data: standardError.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+                ?? "sqlite fixture failed"
+            throw NSError(domain: "UsageProbeCheck", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: message
+            ])
+        }
     }
 
     private static func makeTempDir(_ prefix: String) throws -> URL {

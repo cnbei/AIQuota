@@ -82,6 +82,9 @@ enum ModelPricing {
         if key.contains("gpt-5.5") || key.contains("gpt-5-5") { return "GPT-5.5" }
         if key.contains("gpt-5.3") || key.contains("gpt-5-3") { return "GPT-5.3" }
         if key.contains("gpt-5") { return "GPT-5" }
+        if key.contains("gemini") {
+            return geminiDisplayName(key: key, original: model)
+        }
         return model
     }
 
@@ -182,6 +185,29 @@ enum ModelPricing {
             return ModelTokenRate(input: 0.95, output: 4, cacheRead: 0.19, cacheWrite: 0.95)
         }
         return nil
+    }
+
+    private static func geminiDisplayName(key: String, original: String) -> String {
+        let family: String
+        if key.contains("gemini-3.7-flash") {
+            family = "Gemini 3.7 Flash"
+        } else if key.contains("gemini-3.6-flash") {
+            family = "Gemini 3.6 Flash"
+        } else if key.contains("gemini-3.5-flash") {
+            family = "Gemini 3.5 Flash"
+        } else if key.contains("gemini-3-flash") || key.contains("gemini-3.0-flash") {
+            family = "Gemini 3 Flash"
+        } else if key.contains("gemini-2.5-flash") {
+            family = "Gemini 2.5 Flash"
+        } else if key.contains("gemini-3") {
+            family = "Gemini 3"
+        } else {
+            return original
+        }
+        if let effort = thinkingEffort(in: key) {
+            return "\(family) \(effort)"
+        }
+        return family
     }
 
     private static func grokDisplayName(version: String, key: String) -> String {

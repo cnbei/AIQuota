@@ -45,6 +45,12 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(ModelPricing.displayName(for: "grok-4.6"), "Grok 4.6")
     }
 
+    func testGeminiDisplayNamesKeepFlashFamilyAndEffort() {
+        XCTAssertEqual(ModelPricing.displayName(for: "gemini-3.7-flash"), "Gemini 3.7 Flash")
+        XCTAssertEqual(ModelPricing.displayName(for: "gemini-3.5-flash-high"), "Gemini 3.5 Flash High")
+        XCTAssertEqual(ModelPricing.displayName(for: "gemini-3-flash-a"), "Gemini 3 Flash")
+    }
+
     func testUnknownModelFallsBackToOneDollarPerMillionTokens() {
         XCTAssertEqual(
             ModelPricing.cost(model: "mystery-bot", inputTokens: 0, outputTokens: 0, totalTokens: 2_000_000),

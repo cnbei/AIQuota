@@ -10,6 +10,7 @@ TokenStep 的原则是：能从本地日志中稳定读到 token 数，才进入
 | Claude Code | 已支持 | `~/.claude/projects` | 读取 assistant message 的 usage 字段，按 `message.id` 去重，避免 thinking / text / tool_use 多行重复累计；可选通过 Claude Code 本机钥匙串凭证读取 usage 额度。 |
 | Grok Build | 已支持 | `~/.grok/logs/unified.jsonl` 的 `shell.turn.inference_done` | 读取 `prompt_tokens` / `cached_prompt_tokens` / `completion_tokens` / `reasoning_tokens`，默认计入圆环与总量。sessions 对话文件不读。 |
 | Antigravity | 已支持 | `~/.gemini/antigravity-cli/conversations/*.db` 的 `gen_metadata`，并探测 `~/.gemini/antigravity/conversations` | 只解码官方 usage protobuf：系统提示 + 新输入、cacheRead、输出、thinking，以及 `#19` 模型 id。不读 `steps.step_payload` 对话正文。按 `responseId` 去重。 |
+| WorkBuddy | 已支持 | `~/.workbuddy/projects/**/*.jsonl` 的 `message.usage`，并探测 `WorkBuddyExtension` | 读取官方 `input_tokens` / `output_tokens` / `cache_read_input_tokens` / `total_tokens`。不读对话正文。不把 `session_usage.used`（会话上下文占用）计入每日消耗。 |
 
 ## 实验支持：CC Switch Proxy
 
@@ -96,7 +97,6 @@ TokenStep 采用：
 | CodeBuddy | 中 | 本机看到 VS Code secret buffer 和产品缓存，但不是明文 usage；需要官方 usage 文件或可验证字段。 |
 | Cursor / Windsurf / Trae | 中 | 需要确认是否本地暴露 token usage，不应只按聊天字数估算。 |
 | Hermes Agent | 待确认 | 本机日志存在 `tokens=~` 估算和压缩/错误记录，暂不进入正式总量。需要真实 API usage 或统一事件。 |
-| WorkBuddy | 待确认 | 本机未找到稳定 token usage 日志；需要产品侧提供本地统计文件或事件。 |
 
 ## 接入规则
 

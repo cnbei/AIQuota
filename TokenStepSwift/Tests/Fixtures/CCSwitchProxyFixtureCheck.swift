@@ -363,9 +363,11 @@ struct CCSwitchProxyFixtureCheck {
         )
         try assertEqual(disabled.sources["ZCode"]?.status, "disabled", "zcode disabled status")
         try assertEqual(disabled.sources["Hermes Agent"]?.status, "disabled", "hermes disabled status")
-        try assertEqual(disabled.sources["WorkBuddy"]?.status, "disabled", "workbuddy disabled status")
-        try assertEqual(disabled.totals.tokens, 0, "experimental disabled total")
-        try assertEqual(disabled.agentWork.count, 0, "experimental disabled agent work")
+        try assertEqual(disabled.sources["WorkBuddy"]?.status, "ok", "workbuddy stays on without experimental flag")
+        try assertEqual(disabled.sources["WorkBuddy"]?.records, 1, "workbuddy records without experimental flag")
+        try assertEqual(disabled.totals.tokens, 120, "workbuddy counted while experimental sources stay off")
+        try assertEqual(disabled.agentWork.count, 1, "workbuddy agent work without experimental flag")
+        try assertEqual(disabled.daily.first?.tools["WorkBuddy"], 120, "workbuddy tool tokens without experimental flag")
 
         let snapshot = UsageCollector.collectUsageSnapshotForTests(
             zCodeDatabaseURL: zCodeDB,

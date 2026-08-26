@@ -211,7 +211,7 @@ enum AgentSourceCopy {
         case "hermes":
             return L("~/.hermes/state.db · 实验")
         case "workbuddy":
-            return L("~/.workbuddy/projects · 实验")
+            return L("~/.workbuddy/projects · message.usage")
         case "kimi-code":
             return L("~/.kimi-code/sessions · wire.jsonl usage.record")
         case "grok-cli":

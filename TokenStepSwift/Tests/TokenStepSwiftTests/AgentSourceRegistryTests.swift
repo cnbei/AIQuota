@@ -8,6 +8,7 @@ final class AgentSourceRegistryTests: XCTestCase {
         XCTAssertEqual(AgentSourceRegistry.descriptor(for: "zcode")?.displayName, "ZCode")
         XCTAssertEqual(AgentSourceRegistry.displayName(for: "hermes"), "Hermes Agent")
         XCTAssertEqual(AgentSourceRegistry.displayName(for: "workbuddy"), "WorkBuddy")
+        XCTAssertEqual(AgentSourceRegistry.descriptor(for: "WorkBuddy")?.isExperimental, false)
         XCTAssertEqual(AgentSourceRegistry.descriptor(for: "Kimi Code")?.id, "kimi-code")
         XCTAssertEqual(AgentSourceRegistry.descriptor(for: "Grok CLI")?.tier, .ledger)
         XCTAssertEqual(AgentSourceRegistry.descriptor(for: "Grok CLI")?.displayName, "Grok Build")

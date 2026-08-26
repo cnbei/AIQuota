@@ -34,6 +34,7 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         XCTAssertEqual(snapshot.sources["OpenCode"]?.status, "disabled")
         XCTAssertEqual(snapshot.sources["Cline"]?.status, "disabled")
         XCTAssertEqual(snapshot.sources["Cherry Studio"]?.status, "disabled")
+        XCTAssertEqual(snapshot.sources["WorkBuddy"]?.status, "missing")
         XCTAssertEqual(snapshot.totals.tokens, 0)
         XCTAssertTrue(snapshot.agentWork.isEmpty)
     }
@@ -116,8 +117,7 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         }
 
         let snapshot = UsageCollector.collectUsageSnapshotForTests(
-            workBuddyRootURLs: [directory],
-            includeExperimentalAgentSources: true
+            workBuddyRootURLs: [directory]
         )
 
         XCTAssertEqual(snapshot.sources["WorkBuddy"]?.status, "discovered_no_usage")
@@ -154,8 +154,7 @@ final class UsageCollectorExperimentalAgentTests: XCTestCase {
         )
 
         let snapshot = UsageCollector.collectUsageSnapshotForTests(
-            workBuddyRootURLs: [root],
-            includeExperimentalAgentSources: true
+            workBuddyRootURLs: [root]
         )
 
         XCTAssertEqual(snapshot.sources["WorkBuddy"]?.status, "ok")

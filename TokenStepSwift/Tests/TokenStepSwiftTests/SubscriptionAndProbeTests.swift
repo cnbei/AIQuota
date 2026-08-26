@@ -161,6 +161,22 @@ final class SubscriptionAndProbeTests: XCTestCase {
         XCTAssertTrue(state.files.contains(where: { $0.path == db.path }))
     }
 
+    func testCollectionStateIncludesWorkBuddyWithoutExperimentalFlag() throws {
+        let home = try makeTempDir("workbuddy-home")
+        let session = home.appendingPathComponent(
+            ".workbuddy/projects/example/session.jsonl"
+        )
+        try FileManager.default.createDirectory(at: session.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: session)
+
+        let state = UsageCollector.collectionState(
+            historyDays: 30,
+            includeExperimentalAgentSources: false,
+            homeURL: home
+        )
+        XCTAssertTrue(state.files.contains(where: { $0.path == session.path }))
+    }
+
     func testClineCollectorReadsTokensInWithoutMessageText() throws {
         let root = try makeTempDir("cline")
         let task = root.appendingPathComponent("task-1", isDirectory: true)

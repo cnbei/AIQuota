@@ -51,6 +51,7 @@ swiftc \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/ModelPricing.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Models/UsageModels.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift" \
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/AntigravityUsageParser.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageHistoryLedger.swift" \
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageExportService.swift" \

@@ -113,7 +113,7 @@ enum AgentSourceRegistry {
             displayName: "WorkBuddy",
             tier: .ledger,
             colorToken: AgentSourceColorToken(red: 0.94, green: 0.63, blue: 0.16),
-            isExperimental: true,
+            isExperimental: false,
             probePaths: ["~/.workbuddy"],
             aliases: [],
             rankClientKeys: ["workbuddy"]

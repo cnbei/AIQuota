@@ -39,6 +39,7 @@ enum UsageCollector {
     private static let ccSwitchSourceName = "CC Switch Proxy"
     private static let grokBuildSourceName = "Grok Build"
     private static let antigravitySourceName = "Antigravity"
+    private static let workBuddySourceName = "WorkBuddy"
 
     static func collect(
         historyDays: Int = TokenStepSettings.defaults.historyDays,
@@ -82,6 +83,10 @@ enum UsageCollector {
             rootURLs: antigravityRootURLs,
             modifiedSince: sourceCutoff
         )
+        let workBuddy = collectWorkBuddyUsage(
+            rootURLs: workBuddyRootURLs,
+            modifiedSince: sourceCutoff
+        )
         let experimental = collectExperimentalAgentSources(
             enabled: includeExperimentalAgentSources,
             modifiedSince: sourceCutoff,
@@ -109,7 +114,7 @@ enum UsageCollector {
             ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
         }
         let records = recordsInHistoryWindow(
-            deduped.records + grok.records + antigravity.records + experimental.records,
+            deduped.records + grok.records + antigravity.records + workBuddy.records + experimental.records,
             historyDays: historyDays,
             now: Date()
         )
@@ -118,6 +123,7 @@ enum UsageCollector {
             "Claude Code": claude.source,
             grokBuildSourceName: grok.source,
             antigravitySourceName: antigravity.source,
+            workBuddySourceName: workBuddy.source,
             ccSwitchSourceName: ccSwitch.source
         ]
         sources.merge(experimental.sources) { _, new in new }
@@ -155,6 +161,9 @@ enum UsageCollector {
         urls.append(contentsOf: defaultAntigravityConversationRoots(homeURL: homeURL).flatMap {
             Self.files(under: $0, pathExtensions: ["db"], modifiedSince: cutoff)
         })
+        urls.append(contentsOf: defaultWorkBuddyRoots(homeURL: homeURL).flatMap {
+            jsonlFiles(under: $0, modifiedSince: cutoff)
+        })
 
         if includeExperimentalAgentSources {
             urls.append(contentsOf: existingDatabaseFiles([
@@ -162,8 +171,6 @@ enum UsageCollector {
                 homeURL.appendingPathComponent(".hermes/state.db")
             ]))
             urls.append(contentsOf: [
-                homeURL.appendingPathComponent(".workbuddy/projects", isDirectory: true),
-                homeURL.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true),
                 homeURL.appendingPathComponent(".kimi-code/sessions", isDirectory: true),
                 homeURL.appendingPathComponent(".kimi/sessions", isDirectory: true)
             ].flatMap { jsonlFiles(under: $0, modifiedSince: cutoff) })
@@ -479,6 +486,10 @@ enum UsageCollector {
             rootURLs: antigravityRootURLs ?? [],
             modifiedSince: nil
         )
+        let workBuddy = collectWorkBuddyUsage(
+            rootURLs: workBuddyRootURLs ?? [],
+            modifiedSince: nil
+        )
         let experimental = collectExperimentalAgentSources(
             enabled: includeExperimentalAgentSources,
             modifiedSince: nil,
@@ -495,7 +506,7 @@ enum UsageCollector {
             proxyRecords: ccSwitch.records
         )
         ccSwitch.source = sourceInfo(ccSwitch.source, annotatedWith: deduped)
-        let allRecords = deduped.records + grok.records + antigravity.records + experimental.records
+        let allRecords = deduped.records + grok.records + antigravity.records + workBuddy.records + experimental.records
         let records = historyDays.map {
             recordsInHistoryWindow(allRecords, historyDays: $0, now: now)
         } ?? allRecords
@@ -504,6 +515,7 @@ enum UsageCollector {
             "Claude Code": claude.source,
             grokBuildSourceName: grok.source,
             antigravitySourceName: antigravity.source,
+            workBuddySourceName: workBuddy.source,
             ccSwitchSourceName: ccSwitch.source
         ]
         sources.merge(experimental.sources) { _, new in new }
@@ -2145,15 +2157,20 @@ enum UsageCollector {
         )
     }
 
+    private static func defaultWorkBuddyRoots(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [URL] {
+        [
+            homeURL.appendingPathComponent(".workbuddy/projects", isDirectory: true),
+            homeURL.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
+        ]
+    }
+
     private static func collectWorkBuddyUsage(
         rootURLs: [URL]? = nil,
         modifiedSince cutoffDate: Date?
     ) -> CollectorResult {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let roots = rootURLs ?? [
-            home.appendingPathComponent(".workbuddy/projects", isDirectory: true),
-            home.appendingPathComponent("Library/Application Support/WorkBuddyExtension", isDirectory: true)
-        ]
+        let roots = rootURLs ?? defaultWorkBuddyRoots()
         let discoveredRoots = roots.filter { FileManager.default.fileExists(atPath: $0.path) }
         let files = discoveredRoots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
         var records: [UsageRecord] = []
@@ -2174,10 +2191,18 @@ enum UsageCollector {
 
                 let providerData = object["providerData"] as? [String: Any]
                 let recordType = object["type"] as? String
+                let conversationID = nonEmptyString(providerData?["conversationRequestId"] as? String)
+                    ?? nonEmptyString(object["sessionId"] as? String)
+                    ?? file.path
+                let requestID = [
+                    conversationID,
+                    isoString(fromEpoch: timestamp) ?? "",
+                    "\(lineNumber)"
+                ].joined(separator: ":")
                 records.append(UsageRecord(
                     date: day,
                     timestamp: isoString(fromEpoch: timestamp),
-                    tool: "WorkBuddy",
+                    tool: workBuddySourceName,
                     model: modelKey(
                         providerData?["requestModelId"] as? String
                             ?? providerData?["requestModelName"] as? String
@@ -2185,7 +2210,7 @@ enum UsageCollector {
                     ),
                     usage: usage,
                     source: .workbuddy,
-                    requestID: nonEmptyString(providerData?["conversationRequestId"] as? String),
+                    requestID: requestID,
                     sessionID: nonEmptyString(object["sessionId"] as? String),
                     sourcePath: file.path,
                     lineNumber: lineNumber,
@@ -2257,7 +2282,6 @@ enum UsageCollector {
     private static let experimentalSourceNames = [
         "ZCode",
         "Hermes Agent",
-        "WorkBuddy",
         "Kimi Code",
         "OpenCode",
         "Cline",
@@ -2295,10 +2319,6 @@ enum UsageCollector {
         let hermes = isolated && hermesDatabaseURL == nil
             ? CollectorResult(records: [], source: SourceInfo(status: "missing_db", files: 0, records: 0))
             : collectHermesUsage(databaseURL: hermesDatabaseURL)
-        let workBuddy = collectWorkBuddyUsage(
-            rootURLs: isolated ? (workBuddyRootURLs ?? []) : workBuddyRootURLs,
-            modifiedSince: cutoffDate
-        )
         let kimi = collectKimiCodeUsage(
             rootURLs: isolated ? (kimiCodeRootURLs ?? []) : kimiCodeRootURLs,
             modifiedSince: cutoffDate
@@ -2318,7 +2338,6 @@ enum UsageCollector {
         let results: [(String, CollectorResult)] = [
             ("ZCode", zCode),
             ("Hermes Agent", hermes),
-            ("WorkBuddy", workBuddy),
             ("Kimi Code", kimi),
             ("OpenCode", openCode),
             ("Cline", cline),

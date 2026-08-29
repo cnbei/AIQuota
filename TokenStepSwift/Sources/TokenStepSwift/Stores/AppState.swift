@@ -144,12 +144,9 @@ final class AppState: ObservableObject {
     }
 
     private var cursorAccountLedger: SyncedMachineLedger? {
-        guard settings.cursorQuotaEnabled,
-              let cache = CursorUsageService.readCache()
-        else {
-            return nil
-        }
-        let daily = CursorUsageService.accountDeviceDaily(from: cache.days)
+        guard settings.cursorQuotaEnabled else { return nil }
+        let cacheDaily = CursorUsageService.accountDeviceDaily(from: CursorUsageService.readCache()?.days ?? [])
+        let daily = UsageHighWaterMerge.days(cacheDaily, UsageSyncService.loadPersistedCursorAccountDaily())
         guard !daily.isEmpty else { return nil }
         return SyncedMachineLedger(
             machineId: CursorUsageService.accountDeviceID,
@@ -864,7 +861,7 @@ final class AppState: ObservableObject {
     func clearLocalUsageData() {
         let alert = NSAlert()
         alert.messageText = L("确认清除本地用量数据？")
-        alert.informativeText = L("将删除 usage.json 与本地缓存，设置会保留。下次同步会重新采集。")
+        alert.informativeText = L("将删除本机 usage.json 与本地缓存，设置会保留。Origin 里的终身历史会在下次同步时加回来。")
         alert.alertStyle = .warning
         alert.addButton(withTitle: L("清除"))
         alert.addButton(withTitle: L("取消"))
@@ -1139,14 +1136,15 @@ final class AppState: ObservableObject {
         let historyDays = settings.historyDays
         Task {
             do {
-                let others = try await Task.detached(priority: .utility) {
+                let result = try await Task.detached(priority: .utility) {
                     try UsageSyncService.sync(
                         remoteURLString: remoteURLString,
                         localSnapshot: localSnapshot,
                         historyDays: historyDays
                     )
                 }.value
-                remoteMachines = others
+                remoteMachines = result.others
+                absorbOriginLocalDaily(result.mergedLocalDaily)
                 lastUsageSyncAt = Date()
                 usageSyncError = nil
             } catch {
@@ -1250,7 +1248,7 @@ final class AppState: ObservableObject {
         applyCursorOfficialUsageOverlay()
         localHistoryDaily = CursorUsageService.localDeviceDaily(
             from: ledgerSnapshot,
-            officialDays: settings.cursorQuotaEnabled ? (CursorUsageService.readCache()?.days ?? []) : []
+            shouldStripCursor: settings.cursorQuotaEnabled && cursorAccountLedger != nil
         )
         sanitizeHistoryDeviceFilter()
         guard settings.usageSyncEnabled else { return }
@@ -1268,15 +1266,40 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func absorbOriginLocalDaily(_ daily: [DailyUsage]) {
+        guard !daily.isEmpty else { return }
+        let incoming = UsageSnapshot(
+            generatedAt: ledgerSnapshot.generatedAt,
+            timezone: ledgerSnapshot.timezone,
+            totals: ledgerSnapshot.totals,
+            daily: daily,
+            rhythms: ledgerSnapshot.rhythms,
+            agentWork: ledgerSnapshot.agentWork,
+            tools: ledgerSnapshot.tools,
+            models: ledgerSnapshot.models,
+            sources: ledgerSnapshot.sources
+        )
+        let merged = UsageHistoryLedger.merge(collected: incoming, previous: ledgerSnapshot)
+        let grew = merged.totals.tokens > ledgerSnapshot.totals.tokens
+            || merged.daily.count > ledgerSnapshot.daily.count
+        guard grew else { return }
+        ledgerSnapshot = merged
+        try? DataService.saveSnapshot(merged)
+    }
+
     private func applyCursorOfficialUsageOverlay() {
-        guard settings.cursorQuotaEnabled,
-              let cache = CursorUsageService.readCache(),
-              cache.days.contains(where: { $0.totalTokens > 0 })
-        else {
+        guard settings.cursorQuotaEnabled else {
             snapshot = ledgerSnapshot
             return
         }
-        snapshot = CursorUsageService.merge(ledgerSnapshot, days: cache.days)
+        let cacheDays = CursorUsageService.readCache()?.days ?? []
+        let originDays = UsageSyncService.loadPersistedCursorAccountDaily().map(CursorUsageService.day(from:))
+        let days = CursorUsageService.mergeCursorDays(cacheDays, originDays)
+        guard days.contains(where: { $0.totalTokens > 0 }) else {
+            snapshot = ledgerSnapshot
+            return
+        }
+        snapshot = CursorUsageService.merge(ledgerSnapshot, days: days)
     }
 
     private static func mergingOthersDaily(_ othersDaily: [DailyUsage], into snapshot: UsageSnapshot) -> UsageSnapshot {

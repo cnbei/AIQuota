@@ -103,6 +103,14 @@ struct PopoverMenuCardView: View {
                         Text(LFormat("已用 %@", TokenStepFormat.money(spend)))
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Color.tokenInk)
+                    } else if quota.provider == .kimi, let used = QuotaPresentation.usedPercent(
+                        quota,
+                        cursorMode: appState.settings.cursorDisplayMode,
+                        kimiMode: appState.settings.kimiDisplayMode
+                    ) {
+                        Text(LFormat("已用 %.2f%%", used))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(remainingTextColor)
                     } else {
                         Text(LFormat("%@ 剩余", TokenStepFormat.percent(remaining)))
                             .font(.footnote.weight(.semibold))
@@ -141,7 +149,7 @@ struct PopoverMenuCardView: View {
                         kind: window.kind
                     )
                     CodexBarMetricRow(
-                        title: LFormat("%@ %.0f%% 剩余", window.displayTitle, window.remainingPercent),
+                        title: windowTitle(window),
                         remainingPercent: window.remainingPercent,
                         resetText: window.resetsAt.map { LFormat("重置 %@", QuotaResetFormat.relative($0)) },
                         metaText: pace?.summary(resetsAt: window.resetsAt),
@@ -164,14 +172,22 @@ struct PopoverMenuCardView: View {
     }
 
     private var displayedWindows: [QuotaWindow] {
-        if quota.provider == .kimi, appState.settings.kimiDisplayMode == .code {
-            let code = quota.windows.filter { ($0.title ?? "").localizedCaseInsensitiveContains("code") }
-            return code.isEmpty ? quota.windows : code
+        if quota.provider == .kimi {
+            let membership = quota.windows.filter { $0.kind == .monthlyCredits }
+            let rest = quota.windows.filter { $0.kind != .monthlyCredits }
+            return membership + rest
         }
         if quota.provider == .grok {
             return quota.grokDisplayWindows
         }
         return quota.windows
+    }
+
+    private func windowTitle(_ window: QuotaWindow) -> String {
+        if quota.provider == .kimi, window.kind == .monthlyCredits {
+            return LFormat("%@ 已用 %.2f%%", window.displayTitle, window.usedPercent)
+        }
+        return LFormat("%@ %.0f%% 剩余", window.displayTitle, window.remainingPercent)
     }
 
     private var cursorSpendSection: some View {
@@ -184,6 +200,12 @@ struct PopoverMenuCardView: View {
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(Color.tokenInk)
                     .monospacedDigit()
+                if let bonus = quota.metrics?.cursorBonusDollars, bonus > 0,
+                   let limit = quota.metrics?.cursorLimitDollars, limit > 0 {
+                    Text(LFormat("套餐内 %@ · 赠送 %@", TokenStepFormat.money(limit), TokenStepFormat.money(bonus)))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.tokenMuted)
+                }
             } else {
                 Text(L("暂未读取到花费"))
                     .font(.body)

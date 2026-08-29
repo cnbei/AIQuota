@@ -68,7 +68,8 @@ struct QuotaPresentationFixtureCheck {
             metrics: QuotaMetrics(kimiMembershipUsed: 86.4, kimiCodeUsed: 2.6)
         )
         try assertNear(QuotaPresentation.remainingPercent(kimi, cursorMode: .included, kimiMode: .membership), 13.6)
-        try assertNear(QuotaPresentation.remainingPercent(kimi, cursorMode: .included, kimiMode: .code), 97.4)
+        try assertNear(QuotaPresentation.remainingPercent(kimi, cursorMode: .included, kimiMode: .code), 13.6)
+        try assertTrue(QuotaPresentation.detail(kimi, cursorMode: .included, kimiMode: .code).contains("总使用量 86.40%"))
 
         let now = Date()
         try assertEqual(QuotaResetFormat.relative(now.addingTimeInterval(-10), now: now), "已重置")

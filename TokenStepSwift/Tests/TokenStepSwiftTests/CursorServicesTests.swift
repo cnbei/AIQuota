@@ -83,6 +83,53 @@ final class CursorServicesTests: XCTestCase {
         XCTAssertFalse(detail.contains("总体"))
     }
 
+    func testCursorSpendUsesTotalBeyondIncludedLimit() {
+        let dashboard: [String: Any] = [
+            "planUsage": [
+                "totalSpend": 164148,
+                "includedSpend": 40000,
+                "bonusSpend": 124148,
+                "limit": 40000,
+                "autoPercentUsed": 39.34,
+                "apiPercentUsed": 92.25
+            ]
+        ]
+        let dashboardMetrics = CursorQuotaService.metrics(from: dashboard)
+        XCTAssertEqual(dashboardMetrics?.cursorSpendDollars ?? -1, 1641.48, accuracy: 0.01)
+        XCTAssertEqual(dashboardMetrics?.cursorLimitDollars ?? -1, 400, accuracy: 0.01)
+        XCTAssertEqual(dashboardMetrics?.cursorBonusDollars ?? -1, 1241.48, accuracy: 0.01)
+        XCTAssertEqual(dashboardMetrics?.cursorIncludedUsed ?? -1, 100, accuracy: 0.01)
+
+        let summary: [String: Any] = [
+            "individualUsage": [
+                "plan": [
+                    "used": 40000,
+                    "limit": 40000,
+                    "remaining": 0,
+                    "breakdown": [
+                        "included": 40000,
+                        "bonus": 124148,
+                        "total": 164148
+                    ],
+                    "autoPercentUsed": 39.34,
+                    "apiPercentUsed": 92.25
+                ]
+            ]
+        ]
+        let summaryMetrics = CursorQuotaService.metrics(from: summary)
+        XCTAssertEqual(summaryMetrics?.cursorSpendDollars ?? -1, 1641.48, accuracy: 0.01)
+        XCTAssertEqual(summaryMetrics?.cursorBonusDollars ?? -1, 1241.48, accuracy: 0.01)
+        let quota = ProviderQuota(
+            provider: .cursor,
+            windows: CursorQuotaService.windows(from: dashboard),
+            status: .available,
+            metrics: dashboardMetrics
+        )
+        let detail = QuotaPresentation.detail(quota, cursorMode: .cursorModels, kimiMode: .membership)
+        XCTAssertTrue(detail.contains("$1641.48"), detail)
+        XCTAssertTrue(detail.contains("$400"), detail)
+    }
+
     func testCursorWindowsParseDashboardPlanUsage() {
         let payload: [String: Any] = [
             "planUsage": [
@@ -525,10 +572,55 @@ final class CursorServicesTests: XCTestCase {
         )
         XCTAssertEqual(kept.first?.totalTokens, 8_000)
 
+        let omitted = CursorUsageService.replaceWindow(
+            existing: cache.days + [
+                CursorUsageDay(
+                    date: "2026-08-16",
+                    totalTokens: 4_000,
+                    inputTokens: 1_000,
+                    cachedInputTokens: 2_000,
+                    outputTokens: 1_000,
+                    cacheWriteTokens: 0,
+                    cost: 0.4,
+                    eventCount: 2,
+                    models: ["composer-1": 4_000],
+                    hourlyBuckets: []
+                )
+            ],
+            incoming: [
+                CursorUsageDay(
+                    date: "2026-08-17",
+                    totalTokens: 3_000,
+                    inputTokens: 500,
+                    cachedInputTokens: 2_000,
+                    outputTokens: 500,
+                    cacheWriteTokens: 0,
+                    cost: 0.3,
+                    eventCount: 1,
+                    models: ["composer-1": 3_000],
+                    hourlyBuckets: []
+                )
+            ],
+            windowStart: "2026-08-16",
+            windowEnd: "2026-08-17"
+        )
+        XCTAssertEqual(omitted.first { $0.date == "2026-08-16" }?.totalTokens, 4_000)
+        XCTAssertEqual(omitted.first { $0.date == "2026-08-17" }?.totalTokens, 8_000)
+
         let encoded = try JSONEncoder().encode(cache)
         let text = String(data: encoded, encoding: .utf8) ?? ""
         XCTAssertFalse(text.contains("accessToken"))
         XCTAssertFalse(text.contains("WorkosCursorSessionToken"))
+    }
+
+    func testOfficialFetchSkipsKnownDaysExceptTheRecentWindow() {
+        let keys = ["2026-08-20", "2026-08-21", "2026-08-22", "2026-08-23"]
+        let needed = CursorUsageService.daysNeedingOfficialFetch(
+            lookbackKeys: keys,
+            existingDates: ["2026-08-20", "2026-08-21", "2026-08-23"],
+            refetchRecentDays: 2
+        )
+        XCTAssertEqual(needed, ["2026-08-22", "2026-08-23"])
     }
 
     func testCursorUsageEmptySuccessfulWindowDoesNotInventZeroRing() {

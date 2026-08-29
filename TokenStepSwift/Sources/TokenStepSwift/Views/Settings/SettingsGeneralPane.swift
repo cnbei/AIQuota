@@ -57,7 +57,7 @@ struct SettingsGeneralPane: View {
                                 appState.setHistoryDays(30)
                             }
                         }
-                        Text(L("采集窗口最长 365 天。源文件被清理后，已观察的每日计数仍会保留。"))
+                        Text(L("采集窗口决定还去扫多远的源文件。已经记下的每日用量只升不降，终身历史会写入 Origin。"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }

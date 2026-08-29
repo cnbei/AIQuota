@@ -252,7 +252,9 @@ private struct QuotaResetScheduleRow: View {
                 HStack(spacing: 6) {
                     Text(window.displayTitle)
                         .font(.system(size: 11, weight: .medium))
-                    Text(String(format: "%.0f%% used", window.usedPercent))
+                    Text(window.kind == .monthlyCredits
+                         ? String(format: "%.2f%% used", window.usedPercent)
+                         : String(format: "%.0f%% used", window.usedPercent))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)

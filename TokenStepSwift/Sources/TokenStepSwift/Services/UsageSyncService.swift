@@ -16,7 +16,7 @@ enum UsageSyncService {
         }
     }
 
-    struct MachineUsageFile: Codable {
+    struct MachineUsageFile: Codable, Equatable {
         var machineId: String
         var machineName: String
         var fileSlug: String?
@@ -42,15 +42,20 @@ enum UsageSyncService {
         }
     }
 
-    /// Syncs this machine's daily usage to the shared git repo and returns the
-    /// usage contributed by every *other* machine (never includes this machine's
-    /// own file, so callers can overlay it without double counting).
+    struct UsageSyncResult: Equatable {
+        var others: [MachineUsageFile]
+        var mergedLocalDaily: [DailyUsage]
+    }
+
+    /// Syncs this machine's lifetime daily usage to the shared git repo and
+    /// returns every *other* machine plus the high-water local ledger. This
+    /// machine's own file is never included in `others`.
     @discardableResult
     static func sync(
         remoteURLString: String,
         localSnapshot: UsageSnapshot,
-        historyDays: Int
-    ) throws -> [MachineUsageFile] {
+        historyDays _: Int
+    ) throws -> UsageSyncResult {
         let remote = remoteURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !remote.isEmpty else { throw UsageSyncError.emptyRemoteURL }
 
@@ -58,17 +63,20 @@ enum UsageSyncService {
         let repoRoot = AppPaths.syncRepoRoot
         let branch = try prepareLocalRepo(remote: remote, repoRoot: repoRoot)
 
-        try writeLocalMachineFile(
+        let mergedLocalDaily = try writeLocalMachineFile(
             identity: identity,
             snapshot: localSnapshot,
-            historyDays: historyDays,
             repoRoot: repoRoot
         )
+        try persistCursorAccountFile(repoRoot: repoRoot)
+        try restoreRicherRemoteFiles(repoRoot: repoRoot, excludingFileSlug: identity.fileSlug)
         try commitAndPushIfNeeded(repoRoot: repoRoot, branch: branch, machineName: identity.name)
 
-        let others = readOthersMachines(repoRoot: repoRoot, excludingFileSlug: identity.fileSlug)
+        let others = highWaterOthers(
+            readOthersMachines(repoRoot: repoRoot, excludingFileSlug: identity.fileSlug)
+        )
         writeCache(others)
-        return others
+        return UsageSyncResult(others: others, mergedLocalDaily: mergedLocalDaily)
     }
 
     static func loadCachedOthersMachines() -> [MachineUsageFile] {
@@ -87,6 +95,21 @@ enum UsageSyncService {
         HistoryDevicePresentation.mergedDaily(
             from: loadCachedOthersMachines().map { SyncedMachineLedger(remote: $0) }
         )
+    }
+
+    static func loadCachedCursorAccount() -> MachineUsageFile? {
+        guard let data = try? Data(contentsOf: AppPaths.syncCursorAccountCacheJSON) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(MachineUsageFile.self, from: data)
+    }
+
+    static func loadPersistedCursorAccountDaily() -> [DailyUsage] {
+        if let cached = loadCachedCursorAccount()?.daily, cached.contains(where: { $0.totalTokens > 0 }) {
+            return cached.filter { $0.totalTokens > 0 }
+        }
+        return readMachineFile(at: cursorAccountFileURL(repoRoot: AppPaths.syncRepoRoot))?.daily
+            .filter { $0.totalTokens > 0 } ?? []
     }
 
     // MARK: - Machine identity
@@ -182,17 +205,17 @@ enum UsageSyncService {
 
     // MARK: - Writing this machine's file
 
+    @discardableResult
     private static func writeLocalMachineFile(
         identity: MachineIdentity,
         snapshot: UsageSnapshot,
-        historyDays: Int,
         repoRoot: URL,
         now: Date = Date()
-    ) throws {
-        let cutoff = cutoffDateKey(historyDays: historyDays, now: now)
-        let daily = snapshot.daily
-            .filter { $0.totalTokens > 0 && $0.date >= cutoff }
-            .sorted { $0.date < $1.date }
+    ) throws -> [DailyUsage] {
+        let fileURL = machineFileURL(repoRoot: repoRoot, fileSlug: identity.fileSlug)
+        let existing = readMachineFile(at: fileURL)
+        let incoming = CursorUsageService.localDeviceDaily(from: snapshot, shouldStripCursor: true)
+        let daily = UsageHighWaterMerge.days(existing?.daily ?? [], incoming)
         let file = MachineUsageFile(
             machineId: identity.id,
             machineName: identity.name,
@@ -200,10 +223,101 @@ enum UsageSyncService {
             updatedAt: isoFormatter.string(from: now),
             daily: daily
         )
+        try writeMachineFile(file, to: fileURL)
+        return daily
+    }
 
-        let machinesDir = repoRoot.appendingPathComponent("machines", isDirectory: true)
-        try FileManager.default.createDirectory(at: machinesDir, withIntermediateDirectories: true)
+    private static func persistCursorAccountFile(repoRoot: URL, now: Date = Date()) throws {
+        let fileURL = cursorAccountFileURL(repoRoot: repoRoot)
+        let existing = readMachineFile(at: fileURL)
+        let cacheDaily = CursorUsageService.accountDeviceDaily(from: CursorUsageService.readCache()?.days ?? [])
+        let daily = UsageHighWaterMerge.days(
+            UsageHighWaterMerge.days(existing?.daily ?? [], loadCachedCursorAccount()?.daily ?? []),
+            cacheDaily
+        )
+        guard !daily.isEmpty else { return }
 
+        let file = MachineUsageFile(
+            machineId: CursorUsageService.accountDeviceID,
+            machineName: "Cursor 账号",
+            fileSlug: CursorUsageService.accountDeviceID,
+            updatedAt: isoFormatter.string(from: now),
+            daily: daily
+        )
+        try writeMachineFile(file, to: fileURL)
+        writeCursorAccountCache(file)
+        absorbCursorDaysIntoLocalCache(daily)
+    }
+
+    private static func restoreRicherRemoteFiles(repoRoot: URL, excludingFileSlug fileSlug: String) throws {
+        let cachedBySlug = Dictionary(
+            uniqueKeysWithValues: loadCachedOthersMachines().compactMap { file -> (String, MachineUsageFile)? in
+                let slug = resolvedSlug(file)
+                guard slug != fileSlug, slug != CursorUsageService.accountDeviceID else { return nil }
+                return (slug, file)
+            }
+        )
+        for remote in readOthersMachines(repoRoot: repoRoot, excludingFileSlug: fileSlug) {
+            let slug = resolvedSlug(remote)
+            let mergedDaily = UsageHighWaterMerge.days(cachedBySlug[slug]?.daily ?? [], remote.daily)
+            guard UsageHighWaterMerge.isRicher(mergedDaily, than: remote.daily) else { continue }
+            var restored = remote
+            restored.daily = mergedDaily
+            restored.fileSlug = slug
+            try writeMachineFile(restored, to: machineFileURL(repoRoot: repoRoot, fileSlug: slug))
+        }
+    }
+
+    private static func highWaterOthers(_ incoming: [MachineUsageFile]) -> [MachineUsageFile] {
+        let cachedBySlug = Dictionary(
+            uniqueKeysWithValues: loadCachedOthersMachines().map { (resolvedSlug($0), $0) }
+        )
+        var mergedBySlug: [String: MachineUsageFile] = [:]
+        for file in incoming {
+            let slug = resolvedSlug(file)
+            guard slug != CursorUsageService.accountDeviceID else { continue }
+            var merged = file
+            merged.fileSlug = slug
+            merged.daily = UsageHighWaterMerge.days(cachedBySlug[slug]?.daily ?? [], file.daily)
+            mergedBySlug[slug] = merged
+        }
+        for (slug, cached) in cachedBySlug where mergedBySlug[slug] == nil && slug != CursorUsageService.accountDeviceID {
+            mergedBySlug[slug] = cached
+        }
+        return mergedBySlug.values.sorted {
+            $0.machineName.localizedCaseInsensitiveCompare($1.machineName) == .orderedAscending
+        }
+    }
+
+    private static func absorbCursorDaysIntoLocalCache(_ daily: [DailyUsage]) {
+        let originDays = daily.map(CursorUsageService.day(from:))
+        let existing = CursorUsageService.readCache()
+        let merged = CursorUsageService.mergeCursorDays(existing?.days ?? [], originDays)
+        guard !merged.isEmpty else { return }
+        CursorUsageService.writeCache(
+            CursorUsageCache(fetchedAt: existing?.fetchedAt ?? Date(), days: merged)
+        )
+    }
+
+    private static func writeCursorAccountCache(_ file: MachineUsageFile) {
+        do {
+            try FileManager.default.createDirectory(
+                at: AppPaths.syncCursorAccountCacheJSON.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(file).write(to: AppPaths.syncCursorAccountCacheJSON, options: .atomic)
+        } catch {
+            // Cache is best-effort; Origin remains the durable copy.
+        }
+    }
+
+    private static func writeMachineFile(_ file: MachineUsageFile, to fileURL: URL) throws {
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data: Data
@@ -212,20 +326,31 @@ enum UsageSyncService {
         } catch {
             throw UsageSyncError.encodingFailed
         }
-        let fileURL = machinesDir.appendingPathComponent("\(identity.fileSlug).json")
         try data.write(to: fileURL, options: .atomic)
     }
 
-    private static func cutoffDateKey(historyDays: Int, now: Date) -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
-        let days = max(1, historyDays)
-        let cutoffDate = calendar.date(
-            byAdding: .day,
-            value: -(days - 1),
-            to: calendar.startOfDay(for: now)
-        ) ?? now
-        return DateFormatter.tokenStepDay.string(from: cutoffDate)
+    private static func readMachineFile(at fileURL: URL) -> MachineUsageFile? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        var file = try? JSONDecoder().decode(MachineUsageFile.self, from: data)
+        if file?.fileSlug == nil || file?.fileSlug?.isEmpty == true {
+            file?.fileSlug = fileURL.deletingPathExtension().lastPathComponent
+        }
+        return file
+    }
+
+    private static func machineFileURL(repoRoot: URL, fileSlug: String) -> URL {
+        repoRoot
+            .appendingPathComponent("machines", isDirectory: true)
+            .appendingPathComponent("\(fileSlug).json")
+    }
+
+    private static func cursorAccountFileURL(repoRoot: URL) -> URL {
+        machineFileURL(repoRoot: repoRoot, fileSlug: CursorUsageService.accountDeviceID)
+    }
+
+    private static func resolvedSlug(_ file: MachineUsageFile) -> String {
+        if let slug = file.fileSlug, !slug.isEmpty { return slug }
+        return HistoryDevicePresentation.slug(from: file.machineId)
     }
 
     // MARK: - Commit & push
@@ -282,16 +407,23 @@ enum UsageSyncService {
         ) else {
             return []
         }
-        let excludedName = "\(fileSlug).json"
+        let excludedNames: Set<String> = [
+            "\(fileSlug).json",
+            "\(CursorUsageService.accountDeviceID).json"
+        ]
         let decoder = JSONDecoder()
         var result: [MachineUsageFile] = []
         for fileURL in files {
-            guard fileURL.pathExtension == "json", fileURL.lastPathComponent != excludedName else { continue }
+            guard fileURL.pathExtension == "json", !excludedNames.contains(fileURL.lastPathComponent) else { continue }
             guard let data = try? Data(contentsOf: fileURL),
                   var machineFile = try? decoder.decode(MachineUsageFile.self, from: data)
             else { continue }
             if machineFile.fileSlug == nil || machineFile.fileSlug?.isEmpty == true {
                 machineFile.fileSlug = fileURL.deletingPathExtension().lastPathComponent
+            }
+            if machineFile.machineId == CursorUsageService.accountDeviceID
+                || machineFile.fileSlug == CursorUsageService.accountDeviceID {
+                continue
             }
             result.append(machineFile)
         }

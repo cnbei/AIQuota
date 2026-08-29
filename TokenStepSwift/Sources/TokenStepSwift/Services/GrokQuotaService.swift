@@ -182,6 +182,8 @@ enum GrokQuotaService {
                 ?? object["credit_usage_percent"]
         )
         // proto3 omits zero scalars: SuperGrok drops creditUsagePercent at 0% used.
+        // Ignore monthlyLimit / used / prepaidBalance from the legacy /v1/billing ledger:
+        // that endpoint still returns 200, but it is prepaid/on-demand cents, not SuperGrok quota.
         if creditUsed != nil || period != nil {
             let used = creditUsed ?? 0
             let type = ((period?["type"] as? String) ?? "").uppercased()
@@ -198,23 +200,6 @@ enum GrokQuotaService {
                     title: kind == .weekly ? L("本周共用") : nil
                 )
             )
-        }
-
-        if let used = cent(config["used"] ?? object["used"]),
-           let total = cent(config["monthlyLimit"] ?? object["monthlyLimit"] ?? object["limit"]),
-           total > 0,
-           let usedPercent = QuotaJSON.percent(used: used, remaining: nil, total: total) {
-            let reset = date(from: config["billingPeriodEnd"] ?? object["billingPeriodEnd"])
-            if !windows.contains(where: { $0.kind == .monthlyCredits }) {
-                windows.append(
-                    QuotaWindow(kind: .monthlyCredits, usedPercent: usedPercent, remaining: max(total - used, 0), total: total, resetsAt: reset)
-                )
-            }
-        }
-
-        if windows.isEmpty,
-           let window = window(from: config["credits"] ?? object["credits"] ?? config["credit"] ?? object["credit"], kind: .monthlyCredits) {
-            windows.append(window)
         }
         return windows
     }
@@ -324,17 +309,6 @@ enum GrokQuotaService {
         try? data.write(to: authURL, options: .atomic)
     }
 
-    private static func window(from value: Any?, kind: QuotaWindowKind) -> QuotaWindow? {
-        guard let object = value as? [String: Any] else { return nil }
-        let used = QuotaJSON.number(object["used"] ?? object["used_percent"]) ?? cent(object["used"])
-        let remaining = QuotaJSON.number(object["remaining"] ?? object["remain"] ?? object["balance"])
-        let total = QuotaJSON.number(object["total"] ?? object["limit"] ?? object["quota"]) ?? cent(object["monthlyLimit"])
-        guard let usedPercent = QuotaJSON.percent(used: used, remaining: remaining, total: total) else {
-            return nil
-        }
-        return QuotaWindow(kind: kind, usedPercent: usedPercent, remaining: remaining, total: total, resetsAt: nil)
-    }
-
     private static func readSession() -> GrokSession? {
         if let stored = TokenStepSecrets.get(.grokAccessToken), looksLikeSessionToken(stored) {
             return GrokSession(
@@ -431,14 +405,6 @@ enum GrokQuotaService {
         return nil
     }
 
-    private static func cent(_ value: Any?) -> Double? {
-        if let number = QuotaJSON.number(value) { return number }
-        if let object = value as? [String: Any] {
-            return QuotaJSON.number(object["val"] ?? object["value"])
-        }
-        return nil
-    }
-
     private static func date(from value: Any?) -> Date? {
         guard let text = value as? String, !text.isEmpty else { return nil }
         if let date = ISO8601DateFormatter.grok.date(from: text) {
@@ -464,8 +430,7 @@ enum GrokQuotaService {
 
     private static var endpoints: [URL] {
         [
-            "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
-            "https://cli-chat-proxy.grok.com/v1/billing"
+            "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
         ].compactMap(URL.init(string:))
     }
 }

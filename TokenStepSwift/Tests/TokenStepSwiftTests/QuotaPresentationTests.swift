@@ -44,7 +44,7 @@ final class QuotaPresentationTests: XCTestCase {
         )
     }
 
-    func testKimiCodeModeUsesTightestCodeWindow() {
+    func testKimiRemainingUsesTightestPoolEvenInCodeMode() {
         let quota = ProviderQuota(
             provider: .kimi,
             windows: [
@@ -63,12 +63,40 @@ final class QuotaPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             QuotaPresentation.remainingPercent(quota, cursorMode: .included, kimiMode: .code),
-            97.4,
+            13.6,
             accuracy: 0.01
         )
         let codeDetail = QuotaPresentation.detail(quota, cursorMode: .included, kimiMode: .code)
+        XCTAssertTrue(codeDetail.contains("总使用量 86.40%"))
         XCTAssertTrue(codeDetail.contains("5h"))
         XCTAssertTrue(codeDetail.contains("7d"))
+    }
+
+    func testKimiCodeModeDoesNotHideMembershipUsed() {
+        let quota = ProviderQuota(
+            provider: .kimi,
+            windows: [
+                QuotaWindow(kind: .monthlyCredits, usedPercent: 91.14, remaining: 8.86, total: 100, title: "总使用量"),
+                QuotaWindow(kind: .fiveHour, usedPercent: 0, remaining: 100, total: 100, title: "Code"),
+                QuotaWindow(kind: .sevenDay, usedPercent: 0.58, remaining: 99.42, total: 100, title: "Code")
+            ],
+            status: .available,
+            fetchedAt: Date(),
+            metrics: QuotaMetrics(kimiMembershipUsed: 91.14, kimiCodeUsed: 5.78)
+        )
+        XCTAssertEqual(
+            QuotaPresentation.remainingPercent(quota, cursorMode: .included, kimiMode: .code),
+            8.86,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            QuotaPresentation.usedPercent(quota, cursorMode: .included, kimiMode: .code),
+            91.14,
+            accuracy: 0.01
+        )
+        let detail = QuotaPresentation.detail(quota, cursorMode: .included, kimiMode: .code)
+        XCTAssertTrue(detail.contains("总使用量 91.14%"))
+        XCTAssertFalse(detail.hasPrefix("5h"))
     }
 
     func testResetRelativeFormat() {

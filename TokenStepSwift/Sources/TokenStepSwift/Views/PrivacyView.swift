@@ -17,7 +17,7 @@ struct PrivacyView: View {
                     PrivacyFactRow(title: L("读取"), value: L("日期 · 模型名 · 客户端名 · token 计数"))
                     PrivacyFactRow(title: L("不读取"), value: L("prompt · 代码正文 · 对话内容"))
                     PrivacyFactRow(title: L("不做"), value: L("不开代理 · 不按字数估算 token"))
-                    PrivacyFactRow(title: L("本地保留"), value: L("源文件被清理后，已观察的每日计数仍留在本机"))
+                    PrivacyFactRow(title: L("本地保留"), value: L("已经记下的每日用量只升不降，并会同步到 Origin"))
                     PrivacyFactRow(title: L("可选导出"), value: L("CSV / JSON 只含计数和估算金额，不含设备名或账号"))
                     PrivacyFactRow(title: L("手填月费"), value: L("只存在本机，不随用量同步，也不上传"))
                 }
@@ -119,7 +119,7 @@ struct PrivacyView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.tokenMuted)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(L("历史页柱状图按设备分色，可筛选单台电脑看用量。各台电脑会把完整历史天数写入同步仓库。"))
+                    Text(L("历史页柱状图按设备分色，可筛选单台电脑看用量。各台电脑和 Cursor 账号的完整历史会写入 Origin，累计只升不降。"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.tokenMuted)
                         .fixedSize(horizontal: false, vertical: true)

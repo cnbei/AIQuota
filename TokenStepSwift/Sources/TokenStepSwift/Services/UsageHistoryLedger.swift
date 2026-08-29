@@ -12,43 +12,35 @@ enum UsageDayDate {
 }
 
 enum UsageHistoryLedger {
-    static let retentionDays = 370
-
     static func merge(
         collected: UsageSnapshot,
         previous: UsageSnapshot?,
         now: Date = Date()
     ) -> UsageSnapshot {
-        let cutoff = cutoffDateKey(now: now)
-        let storedDaily = Dictionary(
-            uniqueKeysWithValues: (previous?.daily ?? [])
-                .filter { $0.date >= cutoff && $0.totalTokens > 0 }
-                .map { ($0.date, $0) }
-        )
-        let liveDaily = Dictionary(uniqueKeysWithValues: collected.daily.map { ($0.date, $0) })
-        let dates = Set(storedDaily.keys).union(liveDaily.keys)
-        let daily = dates
-            .compactMap { date -> DailyUsage? in
-                mergeDay(live: liveDaily[date], stored: storedDaily[date])
-            }
-            .filter { $0.date >= cutoff && $0.totalTokens > 0 }
-            .sorted { $0.date < $1.date }
+        _ = now
+        let daily = UsageHighWaterMerge.days(previous?.daily ?? [], collected.daily)
 
         var rhythms = Dictionary(
             uniqueKeysWithValues: (previous?.rhythms ?? [])
-                .filter { $0.date >= cutoff && $0.totalTokens > 0 }
+                .filter { $0.totalTokens > 0 }
                 .map { ($0.date, $0) }
         )
-        for row in collected.rhythms where row.date >= cutoff && row.totalTokens > 0 {
+        for row in collected.rhythms where row.totalTokens > 0 {
+            if let stored = rhythms[row.date], stored.totalTokens > row.totalTokens {
+                continue
+            }
             rhythms[row.date] = row
         }
 
         var agentWork = Dictionary(
             uniqueKeysWithValues: (previous?.agentWork ?? [])
-                .filter { $0.date >= cutoff && $0.totalTokens > 0 }
+                .filter { $0.totalTokens > 0 }
                 .map { ($0.date, $0) }
         )
-        for row in collected.agentWork where row.date >= cutoff && row.totalTokens > 0 {
+        for row in collected.agentWork where row.totalTokens > 0 {
+            if let stored = agentWork[row.date], stored.totalTokens > row.totalTokens {
+                continue
+            }
             agentWork[row.date] = row
         }
 
@@ -61,72 +53,7 @@ enum UsageHistoryLedger {
     }
 
     static func mergeDay(live: DailyUsage?, stored: DailyUsage?) -> DailyUsage? {
-        guard let live else { return stored }
-        guard let stored, stored.totalTokens > 0 else {
-            return live.totalTokens > 0 ? live : stored
-        }
-        if live.totalTokens <= 0 {
-            return stored
-        }
-
-        var tools = stored.tools
-        var models = stored.models
-        var modelsByTool = stored.modelsByTool
-        var toolCosts = stored.toolCosts
-        var modelCosts = stored.modelCosts
-
-        for (tool, tokens) in live.tools {
-            tools[tool] = tokens
-        }
-        for (model, tokens) in live.models {
-            models[model] = tokens
-        }
-        for (tool, liveModels) in live.modelsByTool {
-            var merged = modelsByTool[tool] ?? [:]
-            for (model, tokens) in liveModels {
-                merged[model] = tokens
-            }
-            modelsByTool[tool] = merged
-        }
-        for (tool, cost) in live.toolCosts {
-            toolCosts[tool] = cost
-        }
-        for (model, cost) in live.modelCosts {
-            modelCosts[model] = cost
-        }
-
-        tools = tools.filter { $0.value > 0 }
-        models = models.filter { $0.value > 0 }
-        modelsByTool = modelsByTool
-            .mapValues { $0.filter { $0.value > 0 } }
-            .filter { !$0.value.isEmpty }
-        toolCosts = toolCosts.filter { tools[$0.key] != nil }
-        modelCosts = modelCosts.filter { models[$0.key] != nil }
-
-        let totalTokens = tools.values.reduce(0, +)
-        guard totalTokens > 0 else { return stored }
-
-        let cost = toolCosts.values.reduce(0, +)
-        let equivalent = toolCosts.isEmpty ? max(live.equivalentCost, stored.equivalentCost) : cost
-        return DailyUsage(
-            date: live.date,
-            tools: tools,
-            models: models,
-            modelsByTool: modelsByTool,
-            totalTokens: totalTokens,
-            cost: cost,
-            equivalentCost: equivalent,
-            modelCosts: modelCosts,
-            toolCosts: toolCosts
-        )
-    }
-
-    static func cutoffDateKey(now: Date = Date()) -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
-        let start = calendar.startOfDay(for: now)
-        let cutoff = calendar.date(byAdding: .day, value: -(retentionDays - 1), to: start) ?? start
-        return UsageDayDate.formatter.string(from: cutoff)
+        UsageHighWaterMerge.day(stored, live)
     }
 
     private static func recompute(
@@ -239,7 +166,7 @@ struct GoalStreak: Equatable {
             cursor = yesterday
         }
         var count = 0
-        while count < UsageHistoryLedger.retentionDays {
+        while true {
             let key = UsageDayDate.formatter.string(from: cursor)
             guard met.contains(key) else { break }
             count += 1

@@ -174,8 +174,8 @@ enum CursorQuotaService {
                 ?? object["otherModelsPercentUsed"]
                 ?? object["namedPercentUsed"]
         ) ?? percentFromDisplayMessage(object["namedModelSelectedDisplayMessage"])
-        // Official Usage only shows the two model pools. includedSpend / limit is
-        // kept on metrics for the "$400 included" copy, not as a third progress bar.
+        // Official Usage only shows the two model pools. Spend is on metrics:
+        // totalSpend (included + bonus), not the includedSpend cap.
         var windows: [QuotaWindow] = []
         if let auto, let used = normalizedUsedPercent(auto) {
             windows.append(
@@ -201,14 +201,16 @@ enum CursorQuotaService {
         let api = QuotaJSON.number(plan["apiPercentUsed"] ?? object["apiPercentUsed"])
         let included = includedUsedPercent(from: object, plan: plan)
         let limitCents = QuotaJSON.number(plan["limit"] ?? plan["includedLimit"] ?? object["includedAmountCents"])
-        let includedCents = QuotaJSON.number(plan["includedSpend"] ?? plan["used"] ?? plan["totalSpend"])
-        guard included != nil || auto != nil || api != nil else { return nil }
+        let spendCents = spendCents(from: object, plan: plan)
+        let bonusCents = bonusCents(from: object, plan: plan)
+        guard included != nil || auto != nil || api != nil || spendCents != nil else { return nil }
         return QuotaMetrics(
             cursorIncludedUsed: included,
             cursorModelsUsed: auto.flatMap(normalizedUsedPercent),
             otherModelsUsed: api.flatMap(normalizedUsedPercent),
-            cursorSpendDollars: includedCents.map { $0 / 100 },
-            cursorLimitDollars: limitCents.map { $0 / 100 }
+            cursorSpendDollars: spendCents.map { $0 / 100 },
+            cursorLimitDollars: limitCents.map { $0 / 100 },
+            cursorBonusDollars: bonusCents.map { $0 / 100 }
         )
     }
 
@@ -222,9 +224,32 @@ enum CursorQuotaService {
             ?? string(plan["name"])
     }
 
+    private static func spendCents(from object: [String: Any], plan: [String: Any]) -> Double? {
+        if let total = QuotaJSON.number(plan["totalSpend"] ?? object["totalSpend"]) {
+            return total
+        }
+        let breakdown = (plan["breakdown"] as? [String: Any])
+            ?? (object["breakdown"] as? [String: Any])
+        if let total = QuotaJSON.number(breakdown?["total"]) {
+            return total
+        }
+        let included = QuotaJSON.number(plan["includedSpend"] ?? plan["used"] ?? object["includedSpend"])
+        let bonus = QuotaJSON.number(plan["bonusSpend"] ?? breakdown?["bonus"])
+        if let included, let bonus {
+            return included + bonus
+        }
+        return included
+    }
+
+    private static func bonusCents(from object: [String: Any], plan: [String: Any]) -> Double? {
+        let breakdown = (plan["breakdown"] as? [String: Any])
+            ?? (object["breakdown"] as? [String: Any])
+        return QuotaJSON.number(plan["bonusSpend"] ?? breakdown?["bonus"])
+    }
+
     private static func includedUsedPercent(from object: [String: Any], plan: [String: Any]) -> Double? {
         let limitCents = QuotaJSON.number(plan["limit"] ?? plan["includedLimit"] ?? object["includedAmountCents"])
-        let includedCents = QuotaJSON.number(plan["includedSpend"] ?? plan["used"] ?? plan["totalSpend"])
+        let includedCents = QuotaJSON.number(plan["includedSpend"] ?? plan["used"])
         let remainingCents = QuotaJSON.number(plan["remaining"])
         if let includedCents, let limitCents, limitCents > 0 {
             return min(max(includedCents / limitCents * 100, 0), 100)

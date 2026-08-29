@@ -84,28 +84,34 @@ final class GrokQuotaServiceTests: XCTestCase {
         XCTAssertEqual(windows[0].remainingPercent, 87, accuracy: 0.01)
     }
 
-    func testParsesMonthlyCentValuesWhenLimitExists() {
-        let payload: [String: Any] = [
+    func testIgnoresLegacyMonthlyLimitLedger() {
+        XCTAssertTrue(
+            GrokQuotaService.windows(from: [
+                "config": [
+                    "monthlyLimit": ["val": 1000],
+                    "used": ["val": 0],
+                    "prepaidBalance": ["val": 1000],
+                    "billingPeriodEnd": "2026-09-01T00:00:00Z"
+                ]
+            ]).isEmpty
+        )
+
+        let mixed = GrokQuotaService.windows(from: [
             "config": [
-                "monthlyLimit": ["val": 6000],
-                "used": ["val": 1740],
+                "creditUsagePercent": 45,
+                "currentPeriod": [
+                    "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                    "end": "2026-08-30T17:25:26.231Z"
+                ],
+                "monthlyLimit": ["val": 1000],
+                "used": ["val": 0],
                 "billingPeriodEnd": "2026-09-01T00:00:00Z"
             ]
-        ]
-        let windows = GrokQuotaService.windows(from: payload)
-        XCTAssertEqual(windows.count, 1)
-        XCTAssertEqual(windows[0].kind, .monthlyCredits)
-        XCTAssertEqual(windows[0].usedPercent, 29, accuracy: 0.01)
-    }
-
-    func testIgnoresZeroMonthlyLimit() {
-        let payload: [String: Any] = [
-            "config": [
-                "monthlyLimit": ["val": 0],
-                "used": ["val": 12]
-            ]
-        ]
-        XCTAssertTrue(GrokQuotaService.windows(from: payload).isEmpty)
+        ])
+        XCTAssertEqual(mixed.count, 1)
+        XCTAssertEqual(mixed[0].kind, .weekly)
+        XCTAssertEqual(mixed[0].usedPercent, 45, accuracy: 0.01)
+        XCTAssertNotNil(mixed[0].resetsAt)
     }
 
     func testIgnoresDeviceCodeAndPlainXAIKey() {

@@ -36,7 +36,7 @@ final class UsageHistoryLedgerTests: XCTestCase {
         XCTAssertEqual(day?.totalTokens, 14_000_000)
     }
 
-    func testDropsDaysOlderThanRetentionWindow() {
+    func testKeepsDaysOlderThanFormerRetentionWindow() {
         let previous = snapshot(days: [
             day("2025-01-01", tools: ["Codex": 1_000_000]),
             day("2026-08-01", tools: ["Codex": 2_000_000])
@@ -45,8 +45,24 @@ final class UsageHistoryLedgerTests: XCTestCase {
 
         let merged = UsageHistoryLedger.merge(collected: collected, previous: previous, now: date("2026-08-21"))
 
-        XCTAssertEqual(merged.daily.map(\.date), ["2026-08-01"])
-        XCTAssertEqual(merged.totals.tokens, 2_000_000)
+        XCTAssertEqual(merged.daily.map(\.date), ["2025-01-01", "2026-08-01"])
+        XCTAssertEqual(merged.totals.tokens, 3_000_000)
+    }
+
+    func testKeepsHigherStoredToolWhenLiveReportsLess() {
+        let previous = snapshot(days: [
+            day("2026-08-10", tools: ["Codex": 10_000_000])
+        ])
+        let collected = snapshot(days: [
+            day("2026-08-10", tools: ["Codex": 8_000_000])
+        ])
+
+        let merged = UsageHistoryLedger.merge(collected: collected, previous: previous, now: date("2026-08-21"))
+        let day = merged.daily.first { $0.date == "2026-08-10" }
+
+        XCTAssertEqual(day?.tools["Codex"], 10_000_000)
+        XCTAssertEqual(day?.totalTokens, 10_000_000)
+        XCTAssertEqual(merged.totals.tokens, 10_000_000)
     }
 
     func testPreservesRhythmWhenLiveDayDisappears() {

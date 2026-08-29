@@ -118,9 +118,10 @@ struct CursorUsageEvent: Equatable {
 enum CursorUsageService {
     static let toolName = "Cursor"
     static let accountDeviceID = "cursor-official"
-    static let maxLookbackDays = 30
+    static let maxLookbackDays = 365
     static let maxPages = 20
     static let pageSize = 100
+    static let refetchRecentDays = 2
 
     static var databaseURL: URL = CursorQuotaService.databaseURL
     static var cacheURL: URL = AppPaths.cursorUsageCacheJSON
@@ -156,16 +157,21 @@ enum CursorUsageService {
         }
         let lookback = min(max(historyDays, 1), maxLookbackDays)
         let window = dateWindow(lookbackDays: lookback, now: now)
-        let events = try fetchEvents(
+        let existing = mergeCursorDays(
+            readCache()?.days ?? [],
+            loadPersistedOriginCursorDays()
+        )
+        let events = try fetchEventsByDay(
             userId: userId,
             accessToken: token,
             dashboardUserId: readDashboardUserId(),
-            start: window.start,
-            end: window.end
+            lookbackDays: lookback,
+            existingDates: Set(existing.filter { $0.totalTokens > 0 }.map(\.date)),
+            now: now
         )
         let incoming = bucket(events)
         let mergedDays = replaceWindow(
-            existing: readCache()?.days ?? [],
+            existing: existing,
             incoming: incoming,
             windowStart: window.startDate,
             windowEnd: window.endDate
@@ -217,8 +223,52 @@ enum CursorUsageService {
         windowStart: String,
         windowEnd: String
     ) -> [CursorUsageDay] {
-        let kept = existing.filter { $0.date < windowStart || $0.date > windowEnd }
-        return (kept + incoming).sorted { $0.date < $1.date }
+        _ = windowStart
+        _ = windowEnd
+        return mergeCursorDays(existing, incoming)
+    }
+
+    static func mergeCursorDay(_ existing: CursorUsageDay?, _ incoming: CursorUsageDay?) -> CursorUsageDay? {
+        guard let incoming else { return existing }
+        guard let existing else { return incoming.totalTokens > 0 ? incoming : existing }
+        if incoming.totalTokens > existing.totalTokens { return incoming }
+        if incoming.totalTokens < existing.totalTokens { return existing }
+        if incoming.eventCount > existing.eventCount { return incoming }
+        if incoming.eventCount < existing.eventCount { return existing }
+        return incoming
+    }
+
+    static func mergeCursorDays(_ existing: [CursorUsageDay], _ incoming: [CursorUsageDay]) -> [CursorUsageDay] {
+        var merged: [String: CursorUsageDay] = [:]
+        for row in existing + incoming where row.totalTokens > 0 {
+            merged[row.date] = mergeCursorDay(merged[row.date], row)
+        }
+        return merged.values.sorted { $0.date < $1.date }
+    }
+
+    static func day(from daily: DailyUsage) -> CursorUsageDay {
+        CursorUsageDay(
+            date: daily.date,
+            totalTokens: daily.totalTokens,
+            inputTokens: 0,
+            cachedInputTokens: 0,
+            outputTokens: 0,
+            cacheWriteTokens: 0,
+            cost: daily.cost,
+            eventCount: 0,
+            models: daily.models,
+            hourlyBuckets: [],
+            equivalentCost: daily.equivalentCost,
+            modelCosts: daily.modelCosts
+        )
+    }
+
+    static func localDeviceDaily(from snapshot: UsageSnapshot, shouldStripCursor: Bool) -> [DailyUsage] {
+        shouldStripCursor ? stripCursor(snapshot).daily : snapshot.daily
+    }
+
+    private static func loadPersistedOriginCursorDays() -> [CursorUsageDay] {
+        UsageSyncService.loadPersistedCursorAccountDaily().map(day(from:))
     }
 
     static func accountDeviceDaily(from days: [CursorUsageDay]) -> [DailyUsage] {
@@ -239,10 +289,10 @@ enum CursorUsageService {
     }
 
     static func localDeviceDaily(from snapshot: UsageSnapshot, officialDays: [CursorUsageDay]) -> [DailyUsage] {
-        if officialDays.contains(where: { $0.totalTokens > 0 }) {
-            return stripCursor(snapshot).daily
-        }
-        return snapshot.daily
+        localDeviceDaily(
+            from: snapshot,
+            shouldStripCursor: officialDays.contains(where: { $0.totalTokens > 0 })
+        )
     }
 
     static func merge(_ snapshot: UsageSnapshot, days: [CursorUsageDay]) -> UsageSnapshot {
@@ -338,6 +388,94 @@ enum CursorUsageService {
             return ISO8601DateFormatter.cursorUsage.date(from: text)
         }
         return nil
+    }
+
+    static func daysNeedingOfficialFetch(
+        lookbackKeys: [String],
+        existingDates: Set<String>,
+        refetchRecentDays: Int = refetchRecentDays
+    ) -> [String] {
+        let recent = Set(lookbackKeys.suffix(max(0, refetchRecentDays)))
+        return lookbackKeys.filter { recent.contains($0) || !existingDates.contains($0) }
+    }
+
+    private static func fetchEventsByDay(
+        userId: String,
+        accessToken: String,
+        dashboardUserId: Int?,
+        lookbackDays: Int,
+        existingDates: Set<String>,
+        now: Date
+    ) throws -> [CursorUsageEvent] {
+        let keys = HistoryDevicePresentation.shanghaiDayKeys(lastDays: lookbackDays, now: now)
+        let needed = daysNeedingOfficialFetch(lookbackKeys: keys, existingDates: existingDates)
+        guard !needed.isEmpty else { return [] }
+
+        var collected: [CursorUsageEvent] = []
+        var lastError: Error?
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        let keySet = Set(keys)
+        for dateKey in needed {
+            guard let start = DateFormatter.tokenStepDay.date(from: dateKey) else { continue }
+            let end: Date
+            if let next = calendar.date(byAdding: .day, value: 1, to: start),
+               keySet.contains(DateFormatter.tokenStepDay.string(from: next)) {
+                end = next
+            } else {
+                end = now
+            }
+            do {
+                collected.append(contentsOf: try fetchEventsAdaptive(
+                    userId: userId,
+                    accessToken: accessToken,
+                    dashboardUserId: dashboardUserId,
+                    start: start,
+                    end: end
+                ))
+            } catch {
+                lastError = error
+            }
+        }
+        if collected.isEmpty, let lastError, existingDates.isEmpty {
+            throw lastError
+        }
+        return collected
+    }
+
+    private static func fetchEventsAdaptive(
+        userId: String,
+        accessToken: String,
+        dashboardUserId: Int?,
+        start: Date,
+        end: Date
+    ) throws -> [CursorUsageEvent] {
+        let events = try fetchEvents(
+            userId: userId,
+            accessToken: accessToken,
+            dashboardUserId: dashboardUserId,
+            start: start,
+            end: end
+        )
+        let duration = end.timeIntervalSince(start)
+        let capped = maxPages * pageSize
+        guard events.count >= capped, duration > 30 * 60 else {
+            return events
+        }
+        let mid = start.addingTimeInterval(duration / 2)
+        return try fetchEventsAdaptive(
+            userId: userId,
+            accessToken: accessToken,
+            dashboardUserId: dashboardUserId,
+            start: start,
+            end: mid
+        ) + fetchEventsAdaptive(
+            userId: userId,
+            accessToken: accessToken,
+            dashboardUserId: dashboardUserId,
+            start: mid,
+            end: end
+        )
     }
 
     private static func fetchEvents(

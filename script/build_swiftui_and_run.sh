@@ -101,6 +101,7 @@ HELPER_SOURCES=(
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageCollector.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/AntigravityUsageParser.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/DataService.swift"
+  "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageHighWaterMerge.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageHistoryLedger.swift"
   "$SWIFT_DIR/Sources/TokenStepSwift/Services/UsageExportService.swift"
   "$SWIFT_DIR/Sources/TokenStepHelper/main.swift"

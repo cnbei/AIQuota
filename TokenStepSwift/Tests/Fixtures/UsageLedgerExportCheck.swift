@@ -6,6 +6,8 @@ enum UsageLedgerExportCheck {
     static func main() throws {
         try testArchiveKeepsMissingDay()
         try testMergeKeepsDeletedTool()
+        try testKeepsHigherStoredToolWhenLiveDrops()
+        try testKeepsDaysOlderThanFormerRetentionWindow()
         try testStreakUsesYesterdayWhenTodayIsShort()
         try testExportOmitsIdentity()
         print("usage-ledger-export-check: ok")
@@ -50,6 +52,40 @@ enum UsageLedgerExportCheck {
         let row = merged.daily.first { $0.date == "2026-08-10" }
         guard row?.tools["Codex"] == 9_000_000, row?.tools["Claude Code"] == 5_000_000 else {
             throw checkError("deleted tool was not preserved")
+        }
+    }
+
+    private static func testKeepsHigherStoredToolWhenLiveDrops() throws {
+        let previous = snapshot(days: [
+            day("2026-08-10", ["Codex": 10_000_000])
+        ])
+        let collected = snapshot(days: [
+            day("2026-08-10", ["Codex": 8_000_000])
+        ])
+        let merged = UsageHistoryLedger.merge(
+            collected: collected,
+            previous: previous,
+            now: UsageDayDate.formatter.date(from: "2026-08-21")!
+        )
+        guard merged.daily.first(where: { $0.date == "2026-08-10" })?.totalTokens == 10_000_000 else {
+            throw checkError("live collection was allowed to lower a stored day")
+        }
+    }
+
+    private static func testKeepsDaysOlderThanFormerRetentionWindow() throws {
+        let previous = snapshot(days: [
+            day("2025-01-01", ["Codex": 1_000_000]),
+            day("2026-08-01", ["Codex": 2_000_000])
+        ])
+        let merged = UsageHistoryLedger.merge(
+            collected: snapshot(days: []),
+            previous: previous,
+            now: UsageDayDate.formatter.date(from: "2026-08-21")!
+        )
+        guard merged.daily.map(\.date) == ["2025-01-01", "2026-08-01"],
+              merged.totals.tokens == 3_000_000
+        else {
+            throw checkError("lifetime day was dropped")
         }
     }
 

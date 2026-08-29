@@ -191,6 +191,7 @@ struct QuotaMetrics: Equatable, Codable, Sendable {
     var otherModelsUsed: Double? = nil
     var cursorSpendDollars: Double? = nil
     var cursorLimitDollars: Double? = nil
+    var cursorBonusDollars: Double? = nil
     var kimiMembershipUsed: Double? = nil
     var kimiCodeUsed: Double? = nil
     var grokWeeklyUsed: Double? = nil
@@ -467,7 +468,7 @@ enum QuotaPresentation {
     static func usedPercent(
         _ quota: ProviderQuota,
         cursorMode: CursorDisplayMode,
-        kimiMode: KimiDisplayMode
+        kimiMode _: KimiDisplayMode
     ) -> Double? {
         switch quota.provider {
         case .cursor:
@@ -482,16 +483,7 @@ enum QuotaPresentation {
                     ?? quota.metrics?.otherModelsUsed
             }
         case .kimi:
-            switch kimiMode {
-            case .membership:
-                return quota.metrics?.kimiMembershipUsed
-                    ?? quota.windowUsed(kind: .monthlyCredits)
-                    ?? quota.metrics?.kimiCodeUsed
-            case .code:
-                return quota.metrics?.kimiCodeUsed
-                    ?? quota.codeWindows.map(\.usedPercent).max()
-                    ?? quota.metrics?.kimiMembershipUsed
-            }
+            return kimiTightestUsed(quota)
         case .grok:
             return quota.metrics?.grokWeeklyUsed
                 ?? quota.grokDisplayWindows.map(\.usedPercent).max()
@@ -531,26 +523,40 @@ enum QuotaPresentation {
         return parts.joined(separator: " · ")
     }
 
+    private static func kimiTightestUsed(_ quota: ProviderQuota) -> Double? {
+        var used: [Double] = []
+        if let membership = quota.metrics?.kimiMembershipUsed ?? quota.windowUsed(kind: .monthlyCredits) {
+            used.append(membership)
+        }
+        if let code = quota.metrics?.kimiCodeUsed {
+            used.append(code)
+        }
+        used.append(contentsOf: quota.windows.map(\.usedPercent))
+        return used.max()
+    }
+
     private static func kimiDetail(_ quota: ProviderQuota, mode: KimiDisplayMode) -> String {
+        let membership = quota.metrics?.kimiMembershipUsed ?? quota.windowUsed(kind: .monthlyCredits)
+        let code = quota.metrics?.kimiCodeUsed ?? quota.codeWindows.map(\.usedPercent).max()
         switch mode {
         case .membership:
-            if let used = quota.metrics?.kimiMembershipUsed ?? quota.windowUsed(kind: .monthlyCredits) {
-                var parts = [String(format: "总使用量 %.2f%%", used)]
-                if let code = quota.metrics?.kimiCodeUsed ?? quota.codeWindows.map(\.usedPercent).max() {
+            if let membership {
+                var parts = [String(format: "总使用量 %.2f%%", membership)]
+                if let code {
                     parts.append(String(format: "Code %.0f%% used", code))
                 }
                 return parts.joined(separator: " · ")
             }
         case .code:
             var parts: [String] = []
+            if let membership {
+                parts.append(String(format: "总使用量 %.2f%%", membership))
+            }
             for window in quota.codeWindows.sorted(by: { $0.kind.sortOrder < $1.kind.sortOrder }) {
                 parts.append(String(format: "%@ %.0f%% used", window.kind.badgeLabel, window.usedPercent))
             }
-            if parts.isEmpty, let code = quota.metrics?.kimiCodeUsed {
+            if quota.codeWindows.isEmpty, let code {
                 parts.append(String(format: "Code %.0f%% used", code))
-            }
-            if let membership = quota.metrics?.kimiMembershipUsed ?? quota.windowUsed(kind: .monthlyCredits) {
-                parts.append(String(format: "总体 %.2f%%", membership))
             }
             if !parts.isEmpty { return parts.joined(separator: " · ") }
         }

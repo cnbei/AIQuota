@@ -31,6 +31,10 @@ enum DataService {
         return storedRevision < UsageCollector.codexAccountingRevision
     }
 
+    static func saveSnapshot(_ snapshot: UsageSnapshot) throws {
+        try writeUsageJSON(snapshot)
+    }
+
     static func saveSettings(_ settings: TokenStepSettings) throws {
         let normalized = normalize(settings)
         let encoder = JSONEncoder()
@@ -148,7 +152,7 @@ enum DataService {
         }
     }
 
-    private static func persist(snapshot: UsageSnapshot) throws {
+    private static func writeUsageJSON(_ snapshot: UsageSnapshot) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(snapshot)
@@ -157,6 +161,10 @@ enum DataService {
             withIntermediateDirectories: true
         )
         try data.write(to: AppPaths.usageJSON, options: .atomic)
+    }
+
+    private static func persist(snapshot: UsageSnapshot) throws {
+        try writeUsageJSON(snapshot)
         if let previousRevision = snapshot.sources["Codex"]?.recalibratedFromRevision,
            let currentRevision = snapshot.sources["Codex"]?.accountingRevision,
            previousRevision < currentRevision,
